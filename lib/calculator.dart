@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'localization.dart';
 
 class CalculatorScreen extends StatefulWidget {
   @override
@@ -12,14 +13,31 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   double _num1 = 0;
   double _num2 = 0;
 
-  void buttonPressed(String buttonText) {
-    if (buttonText == "TOZALASH") {
+  void buttonPressed(String buttonKey) {
+    // Map translation keys to actual symbols for calculations
+    final buttonMap = {
+      Localization.translate('clear'): 'clear',
+      Localization.translate('divide'): '÷',
+      Localization.translate('multiply'): '×',
+      Localization.translate('subtract'): '-',
+      Localization.translate('add'): '+',
+      Localization.translate('equals'): '=',
+      Localization.translate('decimal'): '.',
+    };
+
+    // Get the operational symbol or action
+    String buttonText = buttonMap[buttonKey] ?? buttonKey;
+
+    if (buttonText == 'clear') {
       _output = "0";
       _currentNumber = "";
       _operation = "";
       _num1 = 0;
       _num2 = 0;
-    } else if (buttonText == "+" || buttonText == "-" || buttonText == "×" || buttonText == "÷") {
+    } else if (buttonText == "+" ||
+        buttonText == "-" ||
+        buttonText == "×" ||
+        buttonText == "÷") {
       _num1 = double.parse(_output);
       _operation = buttonText;
       _currentNumber = "";
@@ -45,31 +63,31 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     }
 
     setState(() {
-      _output = _currentNumber;
+      _output = _currentNumber.isEmpty ? "0" : _currentNumber;
       if (_output.endsWith(".0")) {
         _output = _output.substring(0, _output.length - 2);
       }
     });
   }
 
-  Widget buildButton(String buttonText, {Color? color}) {
+  Widget buildButton(String buttonKey, {Color? color}) {
     return Expanded(
       child: Padding(
         padding: EdgeInsets.all(4.0),
         child: ElevatedButton(
           child: Text(
-            buttonText,
+            buttonKey,
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: color ?? Colors.grey[200],  // Changed from primary
-            foregroundColor: Colors.black,              // Changed from onPrimary
+            backgroundColor: color ?? Theme.of(context).cardColor,
+            foregroundColor: Theme.of(context).textTheme.bodyMedium?.color,
             padding: EdgeInsets.all(20),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(15),
             ),
           ),
-          onPressed: () => buttonPressed(buttonText),
+          onPressed: () => buttonPressed(buttonKey),
         ),
       ),
     );
@@ -79,12 +97,12 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Kalkulator'),
-        backgroundColor: Colors.blueAccent,
+        title: Text(Localization.translate('calculator_title')),
+        backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
       ),
       body: Container(
-        color: Colors.grey[100],
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Column(
           children: <Widget>[
             Container(
@@ -95,11 +113,11 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 style: TextStyle(
                   fontSize: 48,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blueAccent,
+                  color: Theme.of(context).primaryColor,
                 ),
               ),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.only(
                   bottomLeft: Radius.circular(20),
                   bottomRight: Radius.circular(20),
@@ -116,7 +134,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         buildButton("7"),
                         buildButton("8"),
                         buildButton("9"),
-                        buildButton("÷", color: Colors.blue[100]),
+                        buildButton(Localization.translate('divide'),
+                            color: Theme.of(context)
+                                .primaryColor
+                                .withOpacity(0.2)),
                       ],
                     ),
                     Row(
@@ -124,7 +145,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         buildButton("4"),
                         buildButton("5"),
                         buildButton("6"),
-                        buildButton("×", color: Colors.blue[100]),
+                        buildButton(Localization.translate('multiply'),
+                            color: Theme.of(context)
+                                .primaryColor
+                                .withOpacity(0.2)),
                       ],
                     ),
                     Row(
@@ -132,20 +156,28 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         buildButton("1"),
                         buildButton("2"),
                         buildButton("3"),
-                        buildButton("-", color: Colors.blue[100]),
+                        buildButton(Localization.translate('subtract'),
+                            color: Theme.of(context)
+                                .primaryColor
+                                .withOpacity(0.2)),
                       ],
                     ),
                     Row(
                       children: [
                         buildButton("0"),
-                        buildButton("."),
-                        buildButton("=", color: Colors.blueAccent),
-                        buildButton("+", color: Colors.blue[100]),
+                        buildButton(Localization.translate('decimal')),
+                        buildButton(Localization.translate('equals'),
+                            color: Theme.of(context).primaryColor),
+                        buildButton(Localization.translate('add'),
+                            color: Theme.of(context)
+                                .primaryColor
+                                .withOpacity(0.2)),
                       ],
                     ),
                     Row(
                       children: [
-                        buildButton("TOZALASH", color: Colors.red[100]),
+                        buildButton(Localization.translate('clear'),
+                            color: Colors.red[100]),
                       ],
                     ),
                   ],
