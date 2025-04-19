@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:torch_light/torch_light.dart';
+import 'localization.dart'; // Import your Localization class
 
 class FlashlightScreen extends StatefulWidget {
+  const FlashlightScreen({Key? key}) : super(key: key);
+
   @override
   _FlashlightScreenState createState() => _FlashlightScreenState();
 }
@@ -27,7 +30,11 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
         _hasFlashlight = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fonar topilmadi: $e')),
+        SnackBar(
+          content: Text(
+            Localization.translate("flashlight_not_found").replaceAll("{error}", e.toString()),
+          ),
+        ),
       );
     }
   }
@@ -44,7 +51,11 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Fonar bilan ishlashda xatolik: $e")),
+        SnackBar(
+          content: Text(
+            Localization.translate("flashlight_error").replaceAll("{error}", e.toString()),
+          ),
+        ),
       );
     }
   }
@@ -61,8 +72,8 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Fonar'),
-        backgroundColor: Colors.yellow[700],
+        title: Text(Localization.translate("flashlight_title")),
+        backgroundColor: Colors.blueGrey[800],
         elevation: 0,
       ),
       body: Container(
@@ -91,13 +102,13 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
                   color: _isFlashOn ? Colors.yellow[700] : Colors.grey[400],
                 ),
               ),
-              SizedBox(height: 40),
+              const SizedBox(height: 40),
               if (!_hasFlashlight)
                 Padding(
-                  padding: EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
                   child: Text(
-                    "Bu qurilmada fonar mavjud emas",
-                    style: TextStyle(
+                    Localization.translate("no_flashlight_available"),
+                    style: const TextStyle(
                       fontSize: 18,
                       color: Colors.red,
                     ),
@@ -110,14 +121,16 @@ class _FlashlightScreenState extends State<FlashlightScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _isFlashOn ? Colors.red[400] : Colors.yellow[700],
                     foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
                   child: Text(
-                    _isFlashOn ? "O'chirish" : "Yoqish",
-                    style: TextStyle(
+                    _isFlashOn
+                        ? Localization.translate("turn_off")
+                        : Localization.translate("turn_on"),
+                    style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),

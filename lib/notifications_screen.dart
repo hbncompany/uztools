@@ -2,6 +2,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'localization.dart';
+import 'notification_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:uztools/main.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -12,36 +16,129 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> _notifications = [];
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _isAdLoaded = false;
+  BannerAd? _bannerAd;
+  bool _isLoadingad = true;
 
   @override
   void initState() {
     super.initState();
     _loadNotifications();
+    _loadBannerAd();
   }
 
   Future<void> _loadNotifications() async {
-    final prefs = await SharedPreferences.getInstance();
-    final starredCodes =
-        prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
-    final List<Map<String, dynamic>> notifications = [];
-    for (var code in starredCodes) {
-      final notificationData = prefs.getString('notification_$code');
-      if (notificationData != null) {
-        final data = jsonDecode(notificationData) as Map<String, dynamic>;
-        notifications.add(data);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final starredCodes = prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+      final List<Map<String, dynamic>> notifications = [];
+
+      for (var compositeKey in starredCodes) {
+        final notificationData = prefs.getString('notification_$compositeKey');
+        if (notificationData != null) {
+          try {
+            final data = jsonDecode(notificationData) as Map<String, dynamic>;
+            // Debug: Log na2_code to verify
+            debugPrint('Notification na2_code for $compositeKey: ${data['na2_code']}');
+            notifications.add(data);
+          } catch (e) {
+            debugPrint('Error decoding notification for $compositeKey: $e');
+          }
+        }
       }
+
+      // Sort notifications by timestamp (newest first)
+      notifications.sort((a, b) {
+        final aTimestamp = a['timestamp']?.toString() ?? '';
+        final bTimestamp = b['timestamp']?.toString() ?? '';
+        return bTimestamp.compareTo(aTimestamp);
+      });
+
+      setState(() {
+        _notifications = notifications;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(Localization.translate('error_loading_notifications')),
+          ),
+        );
+      });
+      debugPrint('Error loading notifications: $e');
     }
-    notifications.sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
-    setState(() {
-      _notifications = notifications;
-      _isLoading = false;
-    });
   }
 
-  Future<void> _clearNotification(String na2Code) async {
+  Future<void> _clearNotification(String compositeKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('notification_$compositeKey');
+      await _loadNotifications();
+    } catch (e) {
+      debugPrint('Error clearing notification: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Localization.translate('error_clearing_notification')),
+        ),
+      );
+    }
+  }
+
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-7480088562684396/3085989451', // Replace with actual ad unit ID
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          setState(() {
+            _isAdLoaded = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          setState(() {
+            _isAdLoaded = false;
+            _bannerAd = null;
+          });
+        },
+      ),
+    );
+    _bannerAd!.load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshNotifications() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('notification_$na2Code');
+    final starredCodes = prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+
+    // Clear existing notifications from shared_preferences
+    for (var code in starredCodes) {
+      await prefs.remove('notification_$code');
+      await prefs.remove('notification_sent_$code');
+    }
+
+    // Clear active notifications in the notification tray
+    // final notificationsPlugin = NotificationService()._notificationsPlugin;
+    // await notificationsPlugin.cancelAll();
+
+    // Reset the UI
+    setState(() {
+      _notifications = [];
+    });
+
+    // Re-evaluate and send new notifications
+    await NotificationService().checkAndSendTaxNotifications();
+
+    // Reload notifications to update the UI
     await _loadNotifications();
   }
 
@@ -52,6 +149,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: Text(Localization.translate('notifications_title')),
         backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _refreshNotifications,
+            tooltip: Localization.translate('refresh_notifications'),
+          ),
+        ],
       ),
       body: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
@@ -76,13 +180,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     itemCount: _notifications.length,
                     itemBuilder: (context, index) {
                       final notification = _notifications[index];
+                      final compositeKey =
+                          '${notification['na2_code']}_${notification['payment_date']}';
                       return Padding(
                         padding: EdgeInsets.only(bottom: 16),
                         child: NotificationCard(
                           notification: notification,
                           onDismiss: () async {
-                            await _clearNotification(
-                                notification['na2_code'] as String);
+                            await _clearNotification(compositeKey);
                           },
                           onInfoPressed: () {
                             _showNotificationDetails(context, notification);
@@ -91,7 +196,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       );
                     },
                   ),
+      ),bottomNavigationBar: BottomAppBar(
+      child: Container(
+        child: _isAdLoaded && _bannerAd != null
+            ? SizedBox(
+          height: _bannerAd!.size.height.toDouble(),
+          width: _bannerAd!.size.width.toDouble(),
+          child: AdWidget(ad: _bannerAd!),
+        )
+            : const SizedBox.shrink(),
       ),
+    ),
     );
   }
 
@@ -100,9 +215,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final String taxName = Localization.currentLanguage == 'ru'
         ? notification['tax_name_ru']?.toString() ?? ''
         : notification['tax_name_uz']?.toString() ?? '';
-    final String na2Code = notification['na2_code']?.toString() ?? '';
+    final String rawNa2Code = notification['na2_code']?.toString() ?? '';
+    final String na2Code = rawNa2Code.contains('_')
+        ? rawNa2Code.split('_').first
+        : rawNa2Code;
     final String paymentDate = notification['payment_date']?.toString() ?? '';
     final String timestamp = notification['timestamp']?.toString() ?? '';
+    final String ynl = notification['ynl']?.toString() ?? '';
+    final String period = Localization.currentLanguage == 'ru'
+        ? notification['period_ru']?.toString() ?? ''
+        : notification['period_uz']?.toString() ?? '';
     final DateTime notifiedAt = DateTime.parse(timestamp);
     final String formattedNotifiedAt =
         '${notifiedAt.day.toString().padLeft(2, '0')}.${notifiedAt.month.toString().padLeft(2, '0')}.${notifiedAt.year} ${notifiedAt.hour.toString().padLeft(2, '0')}:${notifiedAt.minute.toString().padLeft(2, '0')}';
@@ -189,6 +311,14 @@ class NotificationCard extends StatelessWidget {
         : notification['tax_name_uz']?.toString() ?? '';
     final String timestamp = notification['timestamp']?.toString() ?? '';
     final DateTime dateTime = DateTime.parse(timestamp);
+    final String rawNa2Code = notification['na2_code']?.toString() ?? '';
+    final String period = notification['period']?.toString() ?? '';
+    final String periods = Localization.currentLanguage == 'ru'
+        ? notification['period_uz']?.toString() ?? ''
+        : notification['period_uz']?.toString() ?? '';
+    final String na2Code = rawNa2Code.contains('_')
+        ? rawNa2Code.split('_').first
+        : rawNa2Code;
     final String formattedTime =
         '${dateTime.day.toString().padLeft(2, '0')}.${dateTime.month.toString().padLeft(2, '0')}.${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
 
@@ -235,7 +365,16 @@ class NotificationCard extends StatelessWidget {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '${Localization.translate('na2_code')}: ${notification['na2_code']?.toString() ?? ''}',
+                    '${Localization.translate('na2_code')}: $na2Code',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '${Localization.translate('period')}: $periods',
                     style: TextStyle(
                       fontSize: 16,
                       color: Theme.of(context).textTheme.bodyMedium?.color,

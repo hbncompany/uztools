@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'localization.dart';
 import 'tax_payment_dates_screen.dart'; // New import
+import 'package:uztools/saved_taxes_screen.dart';
 
 class TaxTypesScreen extends StatefulWidget {
   @override
@@ -55,6 +56,18 @@ class _TaxTypesScreenState extends State<TaxTypesScreen> {
         title: Text(Localization.translate('tax_types_title')),
         backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.star),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SavedTaxesScreen()),
+              );
+            },
+            tooltip: Localization.translate('saved_taxes_title'),
+          ),
+        ],
       ),
       body: Container(
         color: Theme.of(context).scaffoldBackgroundColor,

@@ -18,6 +18,7 @@ import 'package:uztools/notifications_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MobileAds.instance.initialize();
   final notificationService = NotificationService();
   await notificationService.init();
   await notificationService.checkAndSendTaxNotifications(); // Initial check
@@ -84,33 +85,207 @@ class _ToolsAppState extends State<ToolsApp> {
   }
 
   final ThemeData _lightTheme = ThemeData(
-    primaryColor: Colors.blueAccent,
-    scaffoldBackgroundColor: Colors.grey[100],
+    // Primary color scheme
+    primarySwatch: Colors.teal,
+    primaryColor: Colors.teal[700],
+    scaffoldBackgroundColor: Colors.grey[50],
+
+    // AppBar styling
     appBarTheme: AppBarTheme(
-      backgroundColor: Colors.blueAccent,
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        foregroundColor: Colors.black,
+      backgroundColor: Colors.teal[700],
+      foregroundColor: Colors.white,
+      elevation: 4.0,
+      titleTextStyle: TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
       ),
     ),
-  );
 
-  final ThemeData _darkTheme = ThemeData(
-    primaryColor: Colors.blueAccent,
-    scaffoldBackgroundColor: Colors.grey[900],
-    appBarTheme: AppBarTheme(
-      backgroundColor: Colors.white30,
+    // Drawer styling
+    drawerTheme: DrawerThemeData(
+      backgroundColor: Colors.white,
+      scrimColor: Colors.black54,
+      surfaceTintColor: Colors.teal[100],
+      elevation: 8.0,
     ),
+
+    // Icon styling
+    iconTheme: IconThemeData(
+      color: Colors.teal[800],
+      size: 24,
+    ),
+
+    // Button styling
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         foregroundColor: Colors.white,
+        backgroundColor: Colors.teal[600],
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 5,
+        textStyle: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     ),
-    textTheme: TextTheme(
-      bodyMedium: TextStyle(color: Colors.white),
+
+    // Card styling
+    cardTheme: CardTheme(
+      color: Colors.white,
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     ),
-    cardColor: Colors.grey[800],
+
+    // Text styling
+    textTheme: TextTheme(
+      headlineMedium: TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+        color: Colors.teal[900],
+      ),
+      bodyMedium: TextStyle(
+        fontSize: 16,
+        color: Colors.grey[800],
+      ),
+      bodySmall: TextStyle(
+        fontSize: 14,
+        color: Colors.grey[600],
+      ),
+      labelLarge: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: Colors.teal[800],
+      ),
+    ),
+
+    // Input decoration for TextFields
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.teal[50],
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.teal, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.teal[300]!, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.teal[700]!, width: 2),
+      ),
+      labelStyle: TextStyle(color: Colors.teal[800]),
+    ),
+  );
+
+// Dark Theme
+  final ThemeData _darkTheme = ThemeData(
+    // Primary color scheme
+    primarySwatch: Colors.teal,
+    primaryColor: Colors.blueGrey,
+    scaffoldBackgroundColor: Colors.grey[850],
+
+    // AppBar styling
+    appBarTheme: AppBarTheme(
+      backgroundColor: Colors.grey[900],
+      foregroundColor: Colors.orangeAccent,
+      // elevation: 4.0,
+      titleTextStyle: TextStyle(
+        color: Colors.orange[300],
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+
+    // Drawer styling
+    drawerTheme: DrawerThemeData(
+      backgroundColor: Colors.cyan,
+      scrimColor: Colors.black87,
+      surfaceTintColor: Colors.black54,
+      elevation: 8.0,
+    ),
+
+    // Icon styling
+    iconTheme: IconThemeData(
+      color: Colors.teal[300],
+      size: 24,
+    ),
+
+    // Button styling
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        foregroundColor: Colors.grey[900],
+        backgroundColor: Colors.teal[400],
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 5,
+        textStyle: TextStyle(
+          fontSize: 16,
+          color: Colors.orangeAccent,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ),
+
+    // Card styling
+    cardTheme: CardTheme(
+      color: Colors.grey[800],
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    ),
+
+    // Text styling
+    textTheme: TextTheme(
+      headlineMedium: TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+        color: Colors.orangeAccent,
+      ),
+      bodyMedium: TextStyle(
+        fontSize: 16,
+        color: Colors.orangeAccent,
+      ),
+      bodySmall: TextStyle(
+        fontSize: 14,
+        color: Colors.orangeAccent,
+      ),
+      labelLarge: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: Colors.teal[300],
+      ),
+    ),
+
+    // Input decoration for TextFields
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.grey[800],
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.teal[700]!, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.teal[600]!, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.teal[300]!, width: 2),
+      ),
+      labelStyle: TextStyle(color: Colors.teal[300]),
+    ),
   );
 }
 
@@ -239,6 +414,7 @@ class _ToolsHomeScreenState extends State<ToolsHomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final notificationService = NotificationService();
     final tools = _selectedTabIndex == 0
         ? allTools
         : allTools.where((tool) => tool['isMain'] == true).toList();
@@ -258,6 +434,8 @@ class _ToolsHomeScreenState extends State<ToolsHomeScreen>
                     MaterialPageRoute(
                         builder: (context) => NotificationsScreen()),
                   );
+                  await notificationService.init();
+                  await notificationService.checkAndSendTaxNotifications(); // Initial check
                   _loadNotificationCount(); // Refresh count after returning
                 },
                 tooltip: Localization.translate('view_notifications'),

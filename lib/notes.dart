@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'localization.dart'; // Import your Localization class
 
 class NotesScreen extends StatefulWidget {
+  const NotesScreen({Key? key}) : super(key: key);
+
   @override
   _NotesScreenState createState() => _NotesScreenState();
 }
@@ -31,7 +34,11 @@ class _NotesScreenState extends State<NotesScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Qoralamalarni yuklashda xatolik: $e')),
+        SnackBar(
+          content: Text(
+            Localization.translate("load_notes_error").replaceAll("{error}", e.toString()),
+          ),
+        ),
       );
     }
   }
@@ -42,7 +49,11 @@ class _NotesScreenState extends State<NotesScreen> {
       await prefs.setString('notes', json.encode(_notes));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving notes: $e')),
+        SnackBar(
+          content: Text(
+            Localization.translate("save_notes_error").replaceAll("{error}", e.toString()),
+          ),
+        ),
       );
     }
   }
@@ -73,23 +84,23 @@ class _NotesScreenState extends State<NotesScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Tahrirlash'),
+        title: Text(Localization.translate("edit_note")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _titleController,
               decoration: InputDecoration(
-                labelText: 'Titul',
-                border: OutlineInputBorder(),
+                labelText: Localization.translate("title_label"),
+                border: const OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _contentController,
               decoration: InputDecoration(
-                labelText: 'Matn',
-                border: OutlineInputBorder(),
+                labelText: Localization.translate("content_label"),
+                border: const OutlineInputBorder(),
               ),
               maxLines: 3,
             ),
@@ -98,7 +109,7 @@ class _NotesScreenState extends State<NotesScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Bekor qilish'),
+            child: Text(Localization.translate("cancel")),
           ),
           ElevatedButton(
             onPressed: () {
@@ -119,7 +130,7 @@ class _NotesScreenState extends State<NotesScreen> {
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
             ),
-            child: Text('Saqlash'),
+            child: Text(Localization.translate("save")),
           ),
         ],
       ),
@@ -139,23 +150,23 @@ class _NotesScreenState extends State<NotesScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Yanqi qoralama'),
+        title: Text(Localization.translate("add_note")),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _titleController,
               decoration: InputDecoration(
-                labelText: 'Titul',
-                border: OutlineInputBorder(),
+                labelText: Localization.translate("title_label"),
+                border: const OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _contentController,
               decoration: InputDecoration(
-                labelText: 'Matn',
-                border: OutlineInputBorder(),
+                labelText: Localization.translate("content_label"),
+                border: const OutlineInputBorder(),
               ),
               maxLines: 3,
             ),
@@ -164,7 +175,7 @@ class _NotesScreenState extends State<NotesScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Bekor qilish'),
+            child: Text(Localization.translate("cancel")),
           ),
           ElevatedButton(
             onPressed: _addNote,
@@ -172,7 +183,7 @@ class _NotesScreenState extends State<NotesScreen> {
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
             ),
-            child: Text('Save'),
+            child: Text(Localization.translate("save")),
           ),
         ],
       ),
@@ -183,7 +194,11 @@ class _NotesScreenState extends State<NotesScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(_notes[index]['title']!.isEmpty ? 'Untitled' : _notes[index]['title']!),
+        title: Text(
+          _notes[index]['title']!.isEmpty
+              ? Localization.translate("untitled_note")
+              : _notes[index]['title']!,
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -191,12 +206,13 @@ class _NotesScreenState extends State<NotesScreen> {
             children: [
               Text(
                 _notes[index]['content']!,
-                style: TextStyle(fontSize: 16),
+                style: const TextStyle(fontSize: 16),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Text(
-                'Yaratilgan: ${_notes[index]['date']!.substring(0, 16)}',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                Localization.translate("created_at")
+                    .replaceAll("{date}", _notes[index]['date']!.substring(0, 16)),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
           ),
@@ -204,7 +220,7 @@ class _NotesScreenState extends State<NotesScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Yopish'),
+            child: Text(Localization.translate("close")),
           ),
         ],
       ),
@@ -215,7 +231,7 @@ class _NotesScreenState extends State<NotesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Qoralamalarim'),
+        title: Text(Localization.translate("notes_title")),
         backgroundColor: Colors.orange,
         elevation: 0,
       ),
@@ -224,7 +240,7 @@ class _NotesScreenState extends State<NotesScreen> {
         child: _notes.isEmpty
             ? Center(
           child: Text(
-            "Hali qoralamalaringiz yo'q. Yangi qo'shing!",
+            Localization.translate("no_notes"),
             style: TextStyle(
               fontSize: 18,
               color: Theme.of(context).textTheme.bodyMedium?.color,
@@ -232,17 +248,17 @@ class _NotesScreenState extends State<NotesScreen> {
           ),
         )
             : ListView.builder(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           itemCount: _notes.length,
           itemBuilder: (context, index) {
             return Card(
               color: Theme.of(context).cardColor,
               elevation: 2,
-              margin: EdgeInsets.only(bottom: 8),
+              margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 title: Text(
                   _notes[index]['title']!.isEmpty
-                      ? 'Untitled'
+                      ? Localization.translate("untitled_note")
                       : _notes[index]['title']!,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
@@ -252,7 +268,7 @@ class _NotesScreenState extends State<NotesScreen> {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       _notes[index]['content']!,
                       maxLines: 2,
@@ -261,10 +277,11 @@ class _NotesScreenState extends State<NotesScreen> {
                         color: Theme.of(context).textTheme.bodyMedium?.color,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      'Yaratilgan: ${_notes[index]['date']!.substring(0, 16)}',
-                      style: TextStyle(
+                      Localization.translate("created_at").replaceAll(
+                          "{date}", _notes[index]['date']!.substring(0, 16)),
+                      style: const TextStyle(
                         fontSize: 12,
                         color: Colors.grey,
                       ),
@@ -276,11 +293,11 @@ class _NotesScreenState extends State<NotesScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(Icons.edit, color: Colors.blue),
+                      icon: const Icon(Icons.edit, color: Colors.blue),
                       onPressed: () => _editNote(index),
                     ),
                     IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
+                      icon: const Icon(Icons.delete, color: Colors.red),
                       onPressed: () => _deleteNote(index),
                     ),
                   ],
@@ -293,7 +310,7 @@ class _NotesScreenState extends State<NotesScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddNoteDialog,
         backgroundColor: Colors.orange,
-        child: Icon(Icons.add),
+        child: const Icon(Icons.add),
       ),
     );
   }

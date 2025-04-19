@@ -8,28 +8,25 @@ class NotificationService {
   NotificationService._internal();
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+  FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
     const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('app_icon');
+    AndroidInitializationSettings('app_icon');
     const DarwinInitializationSettings iosSettings =
-        DarwinInitializationSettings();
+    DarwinInitializationSettings();
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
     );
-    await _notificationsPlugin.initialize(settings);
-
-    // Request permissions for Android 13+ and iOS
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
+    print('Initializing notifications with app_icon');
+    try {
+      await _notificationsPlugin.initialize(settings);
+      print('Notification initialization successful');
+    } catch (e) {
+      print('Notification initialization failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> checkAndSendTaxNotifications() async {
@@ -39,26 +36,30 @@ class NotificationService {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    for (var code in starredCodes) {
-      final taxDataString = prefs.getString('tax_$code');
+    for (var compositeKey in starredCodes) {
+      final taxDataString = prefs.getString('tax_$compositeKey');
       if (taxDataString == null) continue;
       final taxData = jsonDecode(taxDataString) as Map<String, dynamic>;
+      final na2Code = taxData['na2_code']?.toString() ?? '';
       final paymentDateStr = taxData['payment_date']?.toString() ?? '';
       if (paymentDateStr.isEmpty) continue;
+
+      // Debug: Log na2Code and compositeKey
+      print('NotificationService: na2Code: $na2Code, compositeKey: $compositeKey');
 
       try {
         final paymentDate = DateTime.parse(paymentDateStr);
         final paymentDateOnly =
-            DateTime(paymentDate.year, paymentDate.month, paymentDate.day);
+        DateTime(paymentDate.year, paymentDate.month, paymentDate.day);
         final daysUntil = paymentDateOnly.difference(today).inDays;
 
-        // Check if payment date is within 4 days and not past
+        // Check if payment date is within 7 days and not past
         if (daysUntil >= 0 && daysUntil <= 7) {
           final taxName = taxData['tax_name_ru']?.toString() ??
               taxData['tax_name_uz']?.toString() ??
               'Tax';
-          final notificationId = code.hashCode; // Unique ID per na2_code
-          final lastSentKey = 'notification_sent_$code';
+          final notificationId = compositeKey.hashCode; // Unique ID per composite key
+          final lastSentKey = 'notification_sent_$compositeKey';
           final lastSentStr = prefs.getString(lastSentKey);
 
           // Check if notification was already sent today
@@ -76,7 +77,7 @@ class NotificationService {
             await _notificationsPlugin.show(
               notificationId,
               'Tax Payment Reminder',
-              '$taxName (Code: $code) is due on $paymentDateStr',
+              '$taxName (Code: $na2Code) is due on $paymentDateStr',
               const NotificationDetails(
                 android: AndroidNotificationDetails(
                   'tax_reminders',
@@ -91,23 +92,38 @@ class NotificationService {
 
             // Save notification data
             final notificationData = {
-              'na2_code': code,
+              'na2_code': na2Code, // Store actual na2_code, not compositeKey
               'tax_name_uz': taxData['tax_name_uz']?.toString() ?? '',
               'tax_name_ru': taxData['tax_name_ru']?.toString() ?? '',
               'payment_date': paymentDateStr,
+              'period_uz': taxData['period_uz']?.toString() ?? '',
+              'PERIOD_RU': taxData['PERIOD_RU']?.toString() ?? '',
               'timestamp': now.toIso8601String(),
             };
             await prefs.setString(
-                'notification_$code', jsonEncode(notificationData));
+                'notification_$compositeKey', jsonEncode(notificationData));
 
             // Mark as sent today
             await prefs.setString(lastSentKey, now.toIso8601String());
+
+            // Debug: Log notification details
+            print('Sent notification: ID=$notificationId, na2Code=$na2Code, compositeKey=$compositeKey');
           }
         }
       } catch (e) {
-        // Handle invalid date format
+        print('Error processing tax for $compositeKey: $e');
         continue;
       }
+    }
+  }
+
+  // Add method to clear all notifications
+  Future<void> cancelAllNotifications() async {
+    try {
+      await _notificationsPlugin.cancelAll();
+      print('All notifications cleared');
+    } catch (e) {
+      print('Error clearing notifications: $e');
     }
   }
 }

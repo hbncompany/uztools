@@ -16,11 +16,6 @@ class TaxInstrumentsScreen extends StatelessWidget {
       'icon': Icons.warning,
       'color': Colors.red,
     },
-    {
-      'title': 'saved_taxes_title',
-      'icon': Icons.star,
-      'color': Colors.red,
-    },
   ];
 
   @override

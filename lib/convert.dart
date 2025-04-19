@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'localization.dart'; // Import your Localization class
 
 class ConverterScreen extends StatefulWidget {
+  const ConverterScreen({Key? key}) : super(key: key);
+
   @override
   _ConverterScreenState createState() => _ConverterScreenState();
 }
@@ -31,16 +34,16 @@ class _ConverterScreenState extends State<ConverterScreen> {
           _currencies.insert(0, {
             'Ccy': 'UZS',
             'Rate': '1.0',
-            'CcyNm_EN': 'Uzbekistan Som',
+            'CcyNm_EN': Localization.translate('uzs_name'),
           }); // Add UZS as base currency
           _isLoading = false;
         });
       } else {
-        throw Exception("Ma'lumot yuklashda xatolik: ${response.statusCode}");
+        throw Exception(Localization.translate('fetch_error').replaceAll('{code}', response.statusCode.toString()));
       }
     } catch (e) {
       setState(() {
-        _errorMessage = "Ma'lumot yuklashda xatolik: $e";
+        _errorMessage = Localization.translate('fetch_error').replaceAll('{error}', e.toString());
         _isLoading = false;
       });
     }
@@ -65,15 +68,15 @@ class _ConverterScreenState extends State<ConverterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Valyuta kursi'),
+        title: Text(Localization.translate('currency_converter_title')),
         backgroundColor: Colors.purple,
         elevation: 0,
       ),
       body: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: _isLoading
-            ? Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
             ? Center(
           child: Text(
@@ -91,9 +94,9 @@ class _ConverterScreenState extends State<ConverterScreen> {
             children: [
               // Amount Input
               TextField(
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: 'Miqdor',
+                  labelText: Localization.translate('amount_label'),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -107,13 +110,13 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   });
                 },
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
 
               // From Currency Dropdown
               DropdownButtonFormField<String>(
                 value: _fromCurrency,
                 decoration: InputDecoration(
-                  labelText: '...dan',
+                  labelText: Localization.translate('from_currency_label'),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -133,13 +136,13 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   });
                 },
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
 
               // To Currency Dropdown
               DropdownButtonFormField<String>(
                 value: _toCurrency,
                 decoration: InputDecoration(
-                  labelText: '...ga',
+                  labelText: Localization.translate('to_currency_label'),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -159,11 +162,11 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   });
                 },
               ),
-              SizedBox(height: 30),
+              const SizedBox(height: 30),
 
               // Result Display
               Container(
-                padding: EdgeInsets.all(20),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(20),
@@ -177,8 +180,12 @@ class _ConverterScreenState extends State<ConverterScreen> {
                 ),
                 child: Text(
                   _result > 0
-                      ? '${_amount.toStringAsFixed(2)} $_fromCurrency = ${_result.toStringAsFixed(2)} $_toCurrency'
-                      : "Miqdorni kiriting",
+                      ? Localization.translate('conversion_result')
+                      .replaceAll('{amount}', _amount.toStringAsFixed(2))
+                      .replaceAll('{from}', _fromCurrency ?? '')
+                      .replaceAll('{result}', _result.toStringAsFixed(2))
+                      .replaceAll('{to}', _toCurrency ?? '')
+                      : Localization.translate('enter_amount_prompt'),
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -187,12 +194,12 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
 
               // Last Updated
               Text(
-                "Bugungi kun holatiga Markaziy bank ma'lumoti",
-                style: TextStyle(
+                Localization.translate('last_updated'),
+                style: const TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
                 ),

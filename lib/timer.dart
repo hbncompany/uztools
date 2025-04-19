@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'localization.dart'; // Import your Localization class
 
 class TimerScreen extends StatefulWidget {
+  const TimerScreen({Key? key}) : super(key: key);
+
   @override
   _TimerScreenState createState() => _TimerScreenState();
 }
@@ -16,7 +19,7 @@ class _TimerScreenState extends State<TimerScreen> {
   void _startTimer() {
     if (!_isRunning && (_seconds > 0 || _minutes > 0 || _hours > 0)) {
       _isRunning = true;
-      _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         setState(() {
           if (_seconds > 0) {
             _seconds--;
@@ -31,7 +34,7 @@ class _TimerScreenState extends State<TimerScreen> {
             _isRunning = false;
             timer.cancel();
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Taymer yakunlandi!')),
+              SnackBar(content: Text(Localization.translate("timer_finished"))),
             );
           }
         });
@@ -72,7 +75,7 @@ class _TimerScreenState extends State<TimerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Taymer'),
+        title: Text(Localization.translate("timer_title")),
         backgroundColor: Colors.red,
         elevation: 0,
       ),
@@ -83,7 +86,7 @@ class _TimerScreenState extends State<TimerScreen> {
           children: [
             // Timer Display
             Container(
-              padding: EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(20),
@@ -104,32 +107,32 @@ class _TimerScreenState extends State<TimerScreen> {
                 ),
               ),
             ),
-            SizedBox(height: 40),
+            const SizedBox(height: 40),
 
             // Time Input
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildTimePicker('Soat', _hours, (value) {
+                _buildTimePicker(Localization.translate("hours_label"), _hours, (value) {
                   if (!_isRunning) {
                     setState(() => _hours = value);
                   }
                 }),
-                SizedBox(width: 20),
-                _buildTimePicker('Daqiqa', _minutes, (value) {
+                const SizedBox(width: 20),
+                _buildTimePicker(Localization.translate("minutes_label"), _minutes, (value) {
                   if (!_isRunning) {
                     setState(() => _minutes = value);
                   }
                 }),
-                SizedBox(width: 20),
-                _buildTimePicker('Soniya', _seconds, (value) {
+                const SizedBox(width: 20),
+                _buildTimePicker(Localization.translate("seconds_label"), _seconds, (value) {
                   if (!_isRunning) {
                     setState(() => _seconds = value);
                   }
                 }),
               ],
             ),
-            SizedBox(height: 40),
+            const SizedBox(height: 40),
 
             // Control Buttons
             Row(
@@ -140,30 +143,32 @@ class _TimerScreenState extends State<TimerScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _isRunning ? Colors.orange : Colors.green,
                     foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
                     ),
                   ),
                   child: Text(
-                    _isRunning ? "To'xtatish" : 'Boshlash',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    _isRunning
+                        ? Localization.translate("pause")
+                        : Localization.translate("start"),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
-                SizedBox(width: 20),
+                const SizedBox(width: 20),
                 ElevatedButton(
                   onPressed: _resetTimer,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
                     ),
                   ),
                   child: Text(
-                    'Yangilash',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    Localization.translate("reset"),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -184,7 +189,7 @@ class _TimerScreenState extends State<TimerScreen> {
             color: Theme.of(context).textTheme.bodyMedium?.color,
           ),
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         Container(
           width: 80,
           child: TextField(
@@ -195,7 +200,7 @@ class _TimerScreenState extends State<TimerScreen> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
-              contentPadding: EdgeInsets.symmetric(vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
             ),
             controller: TextEditingController(text: value.toString())
               ..selection = TextSelection.fromPosition(
@@ -204,9 +209,15 @@ class _TimerScreenState extends State<TimerScreen> {
             onChanged: (text) {
               final newValue = int.tryParse(text) ?? value;
               if (newValue >= 0) {
-                if (label == 'Soat' && newValue <= 23) onChanged(newValue);
-                if (label == 'Daqiqa' && newValue <= 59) onChanged(newValue);
-                if (label == 'Soniya' && newValue <= 59) onChanged(newValue);
+                if (label == Localization.translate("hours_label") && newValue <= 23) {
+                  onChanged(newValue);
+                }
+                if (label == Localization.translate("minutes_label") && newValue <= 59) {
+                  onChanged(newValue);
+                }
+                if (label == Localization.translate("seconds_label") && newValue <= 59) {
+                  onChanged(newValue);
+                }
               }
             },
           ),

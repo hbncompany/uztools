@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'localization.dart';
+import 'package:uztools/notification_service.dart';
 
 class TaxPaymentDatesScreen extends StatefulWidget {
   final int groupId;
@@ -47,27 +48,37 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
   }
 
   Future<void> _toggleStarredTaxCode(Map<String, dynamic> payment) async {
+    final notificationService = NotificationService();
     final prefs = await SharedPreferences.getInstance();
-    final na2Code = payment['na2_code']?.toString() ?? '';
+    final na2Code = payment['na2_code'];
+    final paymentDate = payment['payment_date']?.toString() ?? '';
+    final compositeKey = '${na2Code}_$paymentDate'; // Create composite key
+
+    // Debug: Log the values to verify
+    debugPrint('na2Code: $na2Code, paymentDate: $paymentDate, compositeKey: $compositeKey');
+
     setState(() {
-      if (_starredTaxCodes.contains(na2Code)) {
-        _starredTaxCodes.remove(na2Code);
-        prefs.remove('tax_$na2Code');
+      if (_starredTaxCodes.contains(compositeKey)) {
+        _starredTaxCodes.remove(compositeKey);
+        prefs.remove('tax_$compositeKey');
       } else {
-        _starredTaxCodes.add(na2Code);
+        _starredTaxCodes.add(compositeKey);
         final taxData = {
-          'na2_code': na2Code,
+          'na2_code': payment['na2_code'], // Store only the na2_code (e.g., '32')
+          'payment_date': paymentDate,
           'tax_name_uz': payment['tax_name_uz']?.toString() ?? '',
           'tax_name_ru': payment['tax_name_ru']?.toString() ?? '',
-          'payment_date': payment['payment_date']?.toString() ?? '',
           'ynl': payment['YNL']?.toString() ?? '',
+          'period': payment['period']?.toString() ?? '',
           'period_uz': payment['period_uz']?.toString() ?? '',
-          'PERIOD_RU': payment['PERIOD_RU']?.toString() ?? '',
+          'period_ru': payment['PERIOD_RU']?.toString() ?? '',
         };
-        prefs.setString('tax_$na2Code', jsonEncode(taxData));
+        prefs.setString('tax_$compositeKey', jsonEncode(taxData));
       }
       prefs.setStringList('starred_tax_codes', _starredTaxCodes.toList());
     });
+    await notificationService.init();
+    await notificationService.checkAndSendTaxNotifications();
   }
 
   Future<void> _fetchPaymentDates() async {
@@ -80,6 +91,10 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
         final List<dynamic> data = jsonDecode(response.body);
         setState(() {
           _paymentDates = data.cast<Map<String, dynamic>>();
+          // Debug: Log the first payment to verify na2_code
+          if (_paymentDates.isNotEmpty) {
+            debugPrint('First payment na2_code: ${_paymentDates[0]['na2_code']}');
+          }
           _filteredPaymentDates = _paymentDates;
           _ynlOptions = _paymentDates
               .map((p) => p['YNL']?.toString() ?? '')
@@ -93,8 +108,7 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                 : 0;
             final periodUz = p['period_uz']?.toString() ?? '';
             final periodRu = p['PERIOD_RU']?.toString() ?? '';
-            final key =
-                Localization.currentLanguage == 'ru' ? periodRu : periodUz;
+            final key = Localization.currentLanguage == 'ru' ? periodRu : periodUz;
             if (!periodMap.containsKey(key) ||
                 period < (periodMap[key]!['PERIOD'] as int)) {
               periodMap[key] = {
@@ -105,8 +119,7 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
             }
           }
           _periodOptions = periodMap.values.toList()
-            ..sort(
-                (a, b) => (a['PERIOD'] as int).compareTo(b['PERIOD'] as int));
+            ..sort((a, b) => (a['PERIOD'] as int).compareTo(b['PERIOD'] as int));
           _na2CodeOptions = _paymentDates
               .map((p) => p['na2_code']?.toString() ?? '')
               .toSet()
@@ -114,9 +127,9 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
             ..sort();
           if (_selectedPeriod != null &&
               !_periodOptions.any((p) =>
-                  (Localization.currentLanguage == 'ru'
-                      ? p['PERIOD_RU']
-                      : p['period_uz']) ==
+              (Localization.currentLanguage == 'ru'
+                  ? p['PERIOD_RU']
+                  : p['period_uz']) ==
                   _selectedPeriod)) {
             _selectedPeriod = null;
           }
@@ -608,23 +621,25 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                               ),
                             )
                           : ListView.builder(
-                              itemCount: _filteredPaymentDates.length,
-                              itemBuilder: (context, index) {
-                                final payment = _filteredPaymentDates[index];
-                                return Padding(
-                                  padding: EdgeInsets.only(bottom: 16),
-                                  child: PaymentDateCard(
-                                    payment: payment,
-                                    isStarred: _starredTaxCodes.contains(
-                                        payment['na2_code']?.toString() ?? ''),
-                                    onStarToggled: () =>
-                                        _toggleStarredTaxCode(payment),
-                                    onInfoPressed: () =>
-                                        _showTaxDetails(context, payment),
-                                  ),
-                                );
-                              },
-                            ),
+                itemCount: _filteredPaymentDates.length,
+                itemBuilder: (context, index) {
+                  final payment = _filteredPaymentDates[index];
+                  final na2Code = payment['na2_code']?.toString() ?? '';
+                  final period = payment['period_ru']?.toString() ?? '';
+                  final paymentDate = payment['payment_date']?.toString() ?? '';
+                  final compositeKey = '${na2Code}_$paymentDate';
+
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 16),
+                    child: PaymentDateCard(
+                      payment: payment,
+                      isStarred: _starredTaxCodes.contains(compositeKey), // Updated check
+                      onStarToggled: () => _toggleStarredTaxCode(payment),
+                      onInfoPressed: () => _showTaxDetails(context, payment),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),

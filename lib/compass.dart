@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'dart:math' as math;
+import 'localization.dart'; // Import your Localization class
 
 class CompassScreen extends StatefulWidget {
+  const CompassScreen({Key? key}) : super(key: key);
+
   @override
   _CompassScreenState createState() => _CompassScreenState();
 }
@@ -24,7 +27,7 @@ class _CompassScreenState extends State<CompassScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Kompass'),
+        title: Text(Localization.translate('compass_title')),
         backgroundColor: Colors.green,
         elevation: 0,
       ),
@@ -37,7 +40,7 @@ class _CompassScreenState extends State<CompassScreen> {
               child: Center(
                 child: _direction == null
                     ? Text(
-                  "Kompass ishlamayapti (balki ruxsat berilmagan)",
+                  Localization.translate('compass_not_working'),
                   style: TextStyle(
                     fontSize: 18,
                     color: Theme.of(context).textTheme.bodyMedium?.color,
@@ -80,11 +83,12 @@ class _CompassScreenState extends State<CompassScreen> {
               ),
             ),
             Padding(
-              padding: EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20),
               child: Text(
                 _direction != null
-                    ? "Yo'nalish: ${_direction!.toStringAsFixed(0)}°"
-                    : "Yo'nalish ma'lumoti mavjud emas",
+                    ? Localization.translate('direction')
+                    .replaceAll('{degrees}', _direction!.toStringAsFixed(0))
+                    : Localization.translate('direction_unavailable'),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -93,31 +97,35 @@ class _CompassScreenState extends State<CompassScreen> {
               ),
             ),
             Padding(
-              padding: EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  Text('N - North - Shimol',
+                  Text(
+                    Localization.translate('north_label'),
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
                   ),
-                  Text('E - East - Sharq',
+                  Text(
+                    Localization.translate('east_label'),
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
                   ),
-                  Text("W - West - G'arb",
+                  Text(
+                    Localization.translate('west_label'),
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
                   ),
-                  Text("S - South - Janub",
+                  Text(
+                    Localization.translate('south_label'),
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -152,7 +160,12 @@ class CompassPainter extends CustomPainter {
       textAlign: TextAlign.center,
     );
 
-    const directions = ['N', 'E', 'S', 'W'];
+    final directions = [
+      Localization.translate('north_short'),
+      Localization.translate('east_short'),
+      Localization.translate('south_short'),
+      Localization.translate('west_short'),
+    ];
     const angles = [0, 90, 180, 270];
 
     for (int i = 0; i < 4; i++) {
@@ -162,7 +175,7 @@ class CompassPainter extends CustomPainter {
 
       textPainter.text = TextSpan(
         text: directions[i],
-        style: TextStyle(
+        style: const TextStyle(
           color: Colors.black,
           fontSize: 24,
           fontWeight: FontWeight.bold,
@@ -177,8 +190,10 @@ class CompassPainter extends CustomPainter {
       // Draw degree markings
       for (int deg = 0; deg < 360; deg += 10) {
         final angle = deg * math.pi / 180;
-        final start = center + Offset(math.cos(angle) * (radius - 10), math.sin(angle) * (radius - 10));
-        final end = center + Offset(math.cos(angle) * radius, math.sin(angle) * radius);
+        final start = center +
+            Offset(math.cos(angle) * (radius - 10), math.sin(angle) * (radius - 10));
+        final end = center +
+            Offset(math.cos(angle) * radius, math.sin(angle) * radius);
         canvas.drawLine(start, end, paint);
       }
     }
