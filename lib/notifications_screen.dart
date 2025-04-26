@@ -113,6 +113,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void dispose() {
     _bannerAd?.dispose();
+    NotificationService().checkAndSendTaxNotifications();
     super.dispose();
   }
 

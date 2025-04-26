@@ -55,8 +55,8 @@ class NotificationService {
 
         // Check if payment date is within 7 days and not past
         if (daysUntil >= 0 && daysUntil <= 7) {
-          final taxName = taxData['tax_name_ru']?.toString() ??
-              taxData['tax_name_uz']?.toString() ??
+          final taxName = taxData['tax_name_uz']?.toString() ??
+              taxData['tax_name_ru']?.toString() ??
               'Tax';
           final notificationId = compositeKey.hashCode; // Unique ID per composite key
           final lastSentKey = 'notification_sent_$compositeKey';
@@ -76,7 +76,7 @@ class NotificationService {
           if (shouldSend) {
             await _notificationsPlugin.show(
               notificationId,
-              'Tax Payment Reminder',
+              'UzTaxTools',
               '$taxName (Code: $na2Code) is due on $paymentDateStr',
               const NotificationDetails(
                 android: AndroidNotificationDetails(

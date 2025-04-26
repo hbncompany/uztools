@@ -15,6 +15,13 @@ import 'package:uztools/tax_instruments_screen.dart';
 import 'package:uztools/notification_service.dart';
 import 'package:uztools/notification_helper.dart';
 import 'package:uztools/notifications_screen.dart';
+import 'package:uztools/qr_code_screen.dart';
+import 'package:uztools/barcode_screen.dart';
+import 'package:uztools/AdManager.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +34,76 @@ void main() async {
   runApp(ToolsApp());
 }
 
+Future<void> _initializeNotifications() async {
+  final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const iosSettings = DarwinInitializationSettings(
+    requestAlertPermission: false,
+    requestBadgePermission: false,
+    requestSoundPermission: false,
+  );
+  const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+  await flutterLocalNotificationsPlugin.initialize(settings);
+
+  if (Platform.isAndroid) {
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'tax_reminders',
+        'Tax Payment Reminders',
+        description: 'Notifications for tax payment due dates',
+        importance: Importance.high,
+      ),
+    );
+  }
+}
+
+Future<void> _requestPermissions() async {
+  final prefs = await SharedPreferences.getInstance();
+  final permissionsRequested = prefs.getBool('permissions_requested') ?? false;
+
+  if (!permissionsRequested) {
+    // Request notification permission (for tax reminders and notifications)
+    final notificationStatus = await Permission.notification.request();
+    if (!notificationStatus.isGranted) {
+      // Optionally show a dialog explaining why notifications are needed
+    }
+
+    // Request badge permission (iOS-specific)
+    if (Platform.isIOS) {
+      final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(badge: true);
+    }
+
+    // Prompt for bubbles (Android 11+)
+    if (Platform.isAndroid && await _isAndroid11OrHigher()) {
+      const platform = MethodChannel('com.example.uztools/bubbles');
+      try {
+        final canBubble = await platform.invokeMethod('canBubble');
+        if (!canBubble) {
+          await platform.invokeMethod('requestBubblePermission');
+        }
+      } on PlatformException catch (e) {
+        // Handle error (e.g., show dialog to guide user to settings)
+      }
+    }
+
+    await prefs.setBool('permissions_requested', true);
+  }
+}
+
+Future<bool> _isAndroid11OrHigher() async {
+  if (Platform.isAndroid) {
+    const platform = MethodChannel('com.hbncompany.uztools/bubbles');
+    final sdkVersion = await platform.invokeMethod('getSdkVersion');
+    return sdkVersion >= 30; // Android 11 (API 30)
+  }
+  return false;
+}
+
 class ToolsApp extends StatefulWidget {
   @override
   _ToolsAppState createState() => _ToolsAppState();
@@ -35,11 +112,16 @@ class ToolsApp extends StatefulWidget {
 class _ToolsAppState extends State<ToolsApp> {
   bool _isDarkMode = false;
   String _language = 'uz';
+  final AdManager _adManager = AdManager();
 
   @override
   void initState() {
     super.initState();
     _loadPreferences();
+    _adManager.loadInterstitialAd();
+    final notificationService = NotificationService();
+    notificationService.init();
+    notificationService.checkAndSendTaxNotifications(); // Initial check
   }
 
   Future<void> _loadPreferences() async {
@@ -106,7 +188,7 @@ class _ToolsAppState extends State<ToolsApp> {
     drawerTheme: DrawerThemeData(
       backgroundColor: Colors.white,
       scrimColor: Colors.black54,
-      surfaceTintColor: Colors.teal[100],
+      surfaceTintColor: Colors.black54,
       elevation: 8.0,
     ),
 
@@ -353,18 +435,55 @@ class _ToolsHomeScreenState extends State<ToolsHomeScreen>
       'color': Colors.teal,
       'isMain': false
     },
+    {
+      'title': 'qr_code_title',
+      'icon': Icons.percent,
+      'color': Colors.teal,
+      'isMain': true
+    },
+    {
+      'title': 'barcode_title',
+      'icon': Icons.qr_code_scanner,
+      'color': Colors.indigo,
+      'isMain': true
+    },
   ];
   int _notificationCount = 0;
+  final AdManager _adManager = AdManager();
 
   BannerAd? _bannerAd;
   bool _isAdLoaded = false;
   late TabController _tabController;
   int _selectedTabIndex = 0;
 
+  Future<void> _loadMainStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      for (var tool in allTools) {
+        final isMain =
+            prefs.getBool('tool_${tool['title']}_isMain') ?? tool['isMain'];
+        tool['isMain'] = isMain;
+      }
+    });
+  }
+
+  Future<void> _toggleMainStatus(String title) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      final index = allTools.indexWhere((tool) => tool['title'] == title);
+      if (index != -1) {
+        allTools[index]['isMain'] = !allTools[index]['isMain'];
+        prefs.setBool('tool_${title}_isMain', allTools[index]['isMain']);
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+    _loadMainStatus();
     _loadNotificationCount();
+    NotificationService().checkAndSendTaxNotifications();
     // Refresh count when returning from NotificationsScreen
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -429,13 +548,15 @@ class _ToolsHomeScreenState extends State<ToolsHomeScreen>
               IconButton(
                 icon: Icon(Icons.notifications),
                 onPressed: () async {
+                  _adManager.showInterstitialAd(); // Show ad before navigation
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
                         builder: (context) => NotificationsScreen()),
                   );
                   await notificationService.init();
-                  await notificationService.checkAndSendTaxNotifications(); // Initial check
+                  await notificationService
+                      .checkAndSendTaxNotifications(); // Initial check
                   _loadNotificationCount(); // Refresh count after returning
                 },
                 tooltip: Localization.translate('view_notifications'),
@@ -498,10 +619,13 @@ class _ToolsHomeScreenState extends State<ToolsHomeScreen>
                   ),
                   itemCount: tools.length,
                   itemBuilder: (context, index) {
+                    final tool = tools[index]; // Use tools[index] consistently
                     return ToolCard(
-                      title: tools[index]['title'],
-                      icon: tools[index]['icon'],
-                      color: tools[index]['color'],
+                      title: tool['title'],
+                      icon: tool['icon'],
+                      color: tool['color'],
+                      isMain: tool['isMain'],
+                      onToggleMain: () => _toggleMainStatus(tool['title']),
                     );
                   },
                 ),
@@ -560,7 +684,7 @@ class _AppDrawerState extends State<AppDrawer> {
           DrawerHeader(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Colors.blueAccent, Colors.blue],
+                colors: [Colors.black, Colors.blue],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -610,7 +734,7 @@ class _AppDrawerState extends State<AppDrawer> {
               Icons.language,
               color: Theme.of(context).primaryColor,
             ),
-            title: Text('Language'),
+            title: Text(Localization.translate('language')),
             trailing: DropdownButton<String>(
               value: _selectedLanguage,
               items: [
@@ -630,9 +754,10 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
           ListTile(
             leading:
-                Icon(Icons.settings, color: Theme.of(context).primaryColor),
+            Icon(Icons.settings, color: Theme.of(context).primaryColor),
             title: Text(Localization.translate('settings')),
-            onTap: () {},
+            onTap: () {
+            },
           ),
           ListTile(
             leading: Icon(Icons.info, color: Theme.of(context).primaryColor),
@@ -649,11 +774,16 @@ class ToolCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color? color;
+  final bool isMain;
+  final VoidCallback onToggleMain;
+  final AdManager _adManager = AdManager();
 
-  const ToolCard({
+  ToolCard({
     required this.title,
     required this.icon,
     required this.color,
+    required this.isMain,
+    required this.onToggleMain,
   });
 
   @override
@@ -704,44 +834,77 @@ class ToolCard extends StatelessWidget {
               MaterialPageRoute(builder: (context) => ConverterScreen()),
             );
           } else if (title == "interest_calculator") {
+            _adManager.showInterstitialAd(); // Show ad before navigation
             Navigator.push(
               context,
               MaterialPageRoute(
                   builder: (context) => InterestCalculatorScreen()),
             );
           } else if (title == "Taxes") {
+            _adManager.showInterstitialAd(); // Show ad before navigation
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => TaxInstrumentsScreen()),
             );
+          } else if (title == "qr_code_title") {
+            _adManager.showInterstitialAd(); // Show ad before navigation
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => QrCodeScreen()),
+            );
+          }else if (title == "barcode_title") {
+            _adManager.showInterstitialAd(); // Show ad before navigation
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => BarcodeScreen()),
+            );
           }
         },
         borderRadius: BorderRadius.circular(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: color?.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: 40,
-                color: color,
-              ),
-            ),
-            SizedBox(height: 12),
-            Container(
-              alignment: Alignment.center,
-              child: Text(
-                Localization.translate(title),
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).textTheme.bodyMedium?.color,
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: color?.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 40,
+                    color: color,
+                  ),
                 ),
+                SizedBox(height: 12),
+                Container(
+                  alignment: Alignment.center,
+                  child: Center(
+                    child: Text(
+                      Localization.translate(title),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: Icon(
+                  isMain ? Icons.star : Icons.star_border,
+                  color: isMain ? Colors.yellow[700] : Colors.grey,
+                  size: 24,
+                ),
+                onPressed: onToggleMain,
               ),
             ),
           ],

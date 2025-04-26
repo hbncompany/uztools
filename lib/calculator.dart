@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'localization.dart';
+import 'AdManager.dart';
 
 class CalculatorScreen extends StatefulWidget {
   @override
@@ -12,6 +13,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   String _operation = "";
   double _num1 = 0;
   double _num2 = 0;
+  final AdManager _adManager = AdManager();
 
   void buttonPressed(String buttonKey) {
     // Map translation keys to actual symbols for calculations

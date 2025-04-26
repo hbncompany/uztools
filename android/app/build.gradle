@@ -30,7 +30,7 @@ android {
         applicationId = "com.hbncompany.uztools"
         minSdk = 30
         targetSdk = flutter.targetSdkVersion
-        versionCode = 3
+        versionCode = 6
         versionName = "1.0.0"
     }
 
