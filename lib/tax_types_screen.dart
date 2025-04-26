@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'localization.dart';
 import 'tax_payment_dates_screen.dart'; // New import
 import 'package:uztools/saved_taxes_screen.dart';
+import 'package:uztools/calendar_screen.dart';
 
 class TaxTypesScreen extends StatefulWidget {
   @override
@@ -63,6 +64,16 @@ class _TaxTypesScreenState extends State<TaxTypesScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SavedTaxesScreen()),
+              );
+            },
+            tooltip: Localization.translate('saved_taxes_title'),
+          ),
+          IconButton(
+            icon: Icon(Icons.calendar_month),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => CalendarScreen()),
               );
             },
             tooltip: Localization.translate('saved_taxes_title'),

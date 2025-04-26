@@ -3,6 +3,10 @@ import 'localization.dart';
 import 'tax_types_screen.dart';
 import 'interest_calculator_screen.dart';
 import 'package:uztools/saved_taxes_screen.dart';
+import 'package:uztools/mxik_search_screen.dart';
+import 'package:uztools/taxpayer_data_screen.dart';
+import 'package:uztools/nds_payer_screen.dart';
+import 'package:uztools/nds_number_check.dart';
 
 class TaxInstrumentsScreen extends StatelessWidget {
   final List<Map<String, dynamic>> taxTools = [
@@ -15,6 +19,21 @@ class TaxInstrumentsScreen extends StatelessWidget {
       'title': 'tax_penalties',
       'icon': Icons.warning,
       'color': Colors.red,
+    },
+    {
+      'title': 'mxik_search_title',
+      'icon': Icons.search,
+      'color': Colors.red,
+    },
+    {
+      'title': 'nds_payer_title',
+      'icon': Icons.check_circle_outline,
+      'color': Colors.green,
+    },
+    {
+      'title': 'nds_number_title',
+      'icon': Icons.find_in_page_outlined,
+      'color': Colors.green,
     },
   ];
 
@@ -93,6 +112,24 @@ class ToolCard extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => SavedTaxesScreen()),
+            );
+          }
+          else if (title == "mxik_search_title") {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => MxikSearchScreen()),
+            );
+          }
+          else if (title == "nds_payer_title") {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => NdsPayerScreen()),
+            );
+          }
+          else if (title == "nds_number_title") {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => NdsNumberCheckScreen()),
             );
           }
         },

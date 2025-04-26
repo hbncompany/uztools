@@ -15,8 +15,10 @@ import 'package:uztools/tax_instruments_screen.dart';
 import 'package:uztools/notification_service.dart';
 import 'package:uztools/notification_helper.dart';
 import 'package:uztools/notifications_screen.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
+  initializeDateFormatting();
   WidgetsFlutterBinding.ensureInitialized();
   MobileAds.instance.initialize();
   final notificationService = NotificationService();
@@ -35,6 +37,7 @@ class ToolsApp extends StatefulWidget {
 class _ToolsAppState extends State<ToolsApp> {
   bool _isDarkMode = false;
   String _language = 'uz';
+  String _clndrLocale = 'uz';
 
   @override
   void initState() {
@@ -106,7 +109,7 @@ class _ToolsAppState extends State<ToolsApp> {
     drawerTheme: DrawerThemeData(
       backgroundColor: Colors.white,
       scrimColor: Colors.black54,
-      surfaceTintColor: Colors.teal[100],
+      surfaceTintColor: Colors.teal[700],
       elevation: 8.0,
     ),
 
