@@ -89,15 +89,19 @@ Future<void> _requestPermissions() async {
     }
 
     // Prompt for bubbles (Android 11+)
-    if (Platform.isAndroid && await _isAndroid11OrHigher()) {
-      const platform = MethodChannel('com.example.uztools/bubbles');
-      try {
-        final canBubble = await platform.invokeMethod('canBubble');
-        if (!canBubble) {
-          await platform.invokeMethod('requestBubblePermission');
+    if (Platform.isAndroid) {
+      final isAndroid11OrHigher = await _isAndroid11OrHigher();
+      if (isAndroid11OrHigher) {
+        const platform = MethodChannel('com.example.uztools/bubbles');
+        try {
+          final canBubble = await platform.invokeMethod('canBubble');
+          if (!canBubble) {
+            await platform.invokeMethod('requestBubblePermission');
+          }
+        } on PlatformException catch (e) {
+          // Handle error silently or show dialog
+          debugPrint('Bubble permission error: $e');
         }
-      } on PlatformException catch (e) {
-        // Handle error (e.g., show dialog)
       }
     }
 
@@ -106,12 +110,15 @@ Future<void> _requestPermissions() async {
 }
 
 Future<bool> _isAndroid11OrHigher() async {
-  if (Platform.isAndroid) {
-    const platform = MethodChannel('com.example.uztools/bubbles');
+  if (!Platform.isAndroid) return false;
+  const platform = MethodChannel('com.example.uztools/bubbles');
+  try {
     final sdkVersion = await platform.invokeMethod('getSdkVersion');
     return sdkVersion >= 30; // Android 11 (API 30)
+  } catch (e) {
+    debugPrint('Error checking SDK version: $e');
+    return false; // Fallback to avoid crashes
   }
-  return false;
 }
 
 Future<void> _scheduleTaxReminders() async {
@@ -802,17 +809,38 @@ class _AppDrawerState extends State<AppDrawer> {
               },
             ),
           ),
-          ListTile(
-            leading:
-            Icon(Icons.settings, color: Theme.of(context).primaryColor),
-            title: Text(Localization.translate('settings')),
-            onTap: () {
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.info, color: Theme.of(context).primaryColor),
-            title: Text(Localization.translate('about')),
-            onTap: () {},
+          // ListTile(
+          //   leading:
+          //   Icon(Icons.settings, color: Theme.of(context).primaryColor),
+          //   title: Text(Localization.translate('settings')),
+          //   onTap: () {
+          //   },
+          // ),
+          Container(
+            // color: Theme.of(context).canvasColor,
+            child: AboutListTile(
+              icon: Icon(
+                Icons.info,
+                color: Theme.of(context).primaryColor,
+              ),
+              applicationIcon: const Icon(Icons.person_2_outlined),
+              applicationName: 'UzTaxToolBox',
+              applicationVersion: '1.0.1',
+              applicationLegalese: 'Telegram: @hbn_company',
+              child: Text(Localization.translate('about')),
+              aboutBoxChildren: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Image.network(
+                    'https://hbnnarzullayev.pythonanywhere.com/static/logo-no-background.png',
+                    height: 50,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Text('Logo failed to load');
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
           Container(
             alignment: Alignment.bottomCenter,
@@ -820,12 +848,12 @@ class _AppDrawerState extends State<AppDrawer> {
             child: ListTile(
               leading: Icon(
                 Icons.question_answer_outlined,
-                color: Theme.of(context).primaryColor,
+                color: Theme.of(context).canvasColor,
               ),
               title: Text(
-                "Dasturchilik xizmatlari kerakmi?",
+                "Dasturchiga bog'lanish",
                 style: TextStyle(
-                  color: Theme.of(context).primaryColor,
+                  color: Theme.of(context).canvasColor,
                 ),
               ),
               onTap: () {
