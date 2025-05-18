@@ -202,7 +202,8 @@
     "payment_system": "To‘lov tizimi",
     "support_phone": "Texnik yordam telefoni",
     "region": "Viloyat",
-    "district": "Tuman/Shahar"
+    "district": "Tuman/Shahar",
+    "contact": "Dasturchiga bog'lanish"
   },
   "ru": {
     "app_title": "UzToolBox",
@@ -399,7 +400,8 @@
     "payment_system": "Платежная система",
     "support_phone": "Телефон техподдержки",
     "region": "Регион",
-    "district": "Район/Город"
+    "district": "Район/Город",
+    "contact": "Контакт"
   },
   "en": {
     "app_title": "UzToolBox",
@@ -587,6 +589,7 @@
     "payment_system": "Payment System",
     "support_phone": "Support Phone",
     "region": "Region",
-    "district": "District/City"
+    "district": "District/City",
+    "contact": "Developer chat"
   }
 }

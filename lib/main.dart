@@ -851,7 +851,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 color: Theme.of(context).canvasColor,
               ),
               title: Text(
-                "Dasturchiga bog'lanish",
+                Localization.translate('contact'),
                 style: TextStyle(
                   color: Theme.of(context).canvasColor,
                 ),
@@ -930,6 +930,7 @@ class ToolCard extends StatelessWidget {
               MaterialPageRoute(builder: (context) => NotesScreen()),
             );
           } else if (title == "converter") {
+            _adManager.showInterstitialAd(); // Show ad before navigation
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => ConverterScreen()),
@@ -942,7 +943,6 @@ class ToolCard extends StatelessWidget {
                   builder: (context) => InterestCalculatorScreen()),
             );
           } else if (title == "Taxes") {
-            _adManager.showInterstitialAd(); // Show ad before navigation
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => TaxInstrumentsScreen()),
