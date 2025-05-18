@@ -110,7 +110,7 @@ class _TextEntryPageState extends State<TextEntryPage> {
             TextField(
               controller: _textController,
               decoration: const InputDecoration(
-                labelText: 'Xabaringizni kiritng (Savol)',
+                labelText: 'Telegramdan @hbn_company ga yozing',
                 border: OutlineInputBorder(),
               ),
               maxLines: 3,
