@@ -22,10 +22,16 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:uztools/developer_contact.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MobileAds.instance.initialize();
+  await _requestPermissions();
+  await _initializeNotifications();
+  await _scheduleTaxReminders();
   final notificationService = NotificationService();
   await notificationService.init();
   await notificationService.checkAndSendTaxNotifications(); // Initial check
@@ -34,8 +40,10 @@ void main() async {
   runApp(ToolsApp());
 }
 
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+FlutterLocalNotificationsPlugin();
+
 Future<void> _initializeNotifications() async {
-  final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
   const iosSettings = DarwinInitializationSettings(
     requestAlertPermission: false,
@@ -54,6 +62,9 @@ Future<void> _initializeNotifications() async {
         'Tax Payment Reminders',
         description: 'Notifications for tax payment due dates',
         importance: Importance.high,
+        enableLights: true,
+        enableVibration: true,
+        showBadge: true,
       ),
     );
   }
@@ -64,18 +75,17 @@ Future<void> _requestPermissions() async {
   final permissionsRequested = prefs.getBool('permissions_requested') ?? false;
 
   if (!permissionsRequested) {
-    // Request notification permission (for tax reminders and notifications)
+    // Request notification permission
     final notificationStatus = await Permission.notification.request();
     if (!notificationStatus.isGranted) {
-      // Optionally show a dialog explaining why notifications are needed
+      // Optionally: Show dialog or openAppSettings()
     }
 
-    // Request badge permission (iOS-specific)
+    // Request badge and notification permission (iOS)
     if (Platform.isIOS) {
-      final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
       await flutterLocalNotificationsPlugin
           .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-          ?.requestPermissions(badge: true);
+          ?.requestPermissions(alert: true, badge: true, sound: true);
     }
 
     // Prompt for bubbles (Android 11+)
@@ -87,7 +97,7 @@ Future<void> _requestPermissions() async {
           await platform.invokeMethod('requestBubblePermission');
         }
       } on PlatformException catch (e) {
-        // Handle error (e.g., show dialog to guide user to settings)
+        // Handle error (e.g., show dialog)
       }
     }
 
@@ -97,12 +107,52 @@ Future<void> _requestPermissions() async {
 
 Future<bool> _isAndroid11OrHigher() async {
   if (Platform.isAndroid) {
-    const platform = MethodChannel('com.hbncompany.uztools/bubbles');
+    const platform = MethodChannel('com.example.uztools/bubbles');
     final sdkVersion = await platform.invokeMethod('getSdkVersion');
     return sdkVersion >= 30; // Android 11 (API 30)
   }
   return false;
 }
+
+Future<void> _scheduleTaxReminders() async {
+  tz.initializeTimeZones();
+  final location = tz.getLocation('Asia/Tashkent'); // Adjust timezone
+  final now = tz.TZDateTime.now(location);
+  final firstOfNextMonth = tz.TZDateTime(location, now.year, now.month + 1, 1, 8); // 1st of next month at 8 AM
+
+  const androidDetails = AndroidNotificationDetails(
+    'tax_reminders',
+    'Tax Payment Reminders',
+    channelDescription: 'Notifications for tax payment due dates',
+    importance: Importance.high,
+    priority: Priority.high,
+    showWhen: true,
+    enableLights: true,
+    enableVibration: true,
+  );
+  const iosDetails = DarwinNotificationDetails(badgeNumber: 1);
+  const notificationDetails = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+  await flutterLocalNotificationsPlugin.zonedSchedule(
+    0,
+    'Tax Payment Reminder',
+    'Your tax payment is due this month!',
+    firstOfNextMonth,
+    notificationDetails,
+    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    payload: 'tax_reminder',
+    matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime, // Repeat monthly
+  );
+}
+
+// Future<bool> _isAndroid11OrHigher() async {
+//   if (Platform.isAndroid) {
+//     const platform = MethodChannel('com.hbncompany.uztools/bubbles');
+//     final sdkVersion = await platform.invokeMethod('getSdkVersion');
+//     return sdkVersion >= 30; // Android 11 (API 30)
+//   }
+//   return false;
+// }
 
 class ToolsApp extends StatefulWidget {
   @override
@@ -763,6 +813,29 @@ class _AppDrawerState extends State<AppDrawer> {
             leading: Icon(Icons.info, color: Theme.of(context).primaryColor),
             title: Text(Localization.translate('about')),
             onTap: () {},
+          ),
+          Container(
+            alignment: Alignment.bottomCenter,
+            color: Theme.of(context).primaryColor,
+            child: ListTile(
+              leading: Icon(
+                Icons.question_answer_outlined,
+                color: Theme.of(context).primaryColor,
+              ),
+              title: Text(
+                "Dasturchilik xizmatlari kerakmi?",
+                style: TextStyle(
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => TextEntryPage(username: 'user')),
+                );
+              },
+            ),
           ),
         ],
       ),
