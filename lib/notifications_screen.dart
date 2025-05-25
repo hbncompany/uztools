@@ -1,11 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'localization.dart';
-import 'notification_service.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:uztools/main.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:uztools/notification_service.dart';
+import 'localization.dart';
+import 'package:intl/intl.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -16,42 +15,87 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> _notifications = [];
-  bool _isLoading = false;
+  bool _isLoading = true;
   bool _isAdLoaded = false;
   BannerAd? _bannerAd;
-  bool _isLoadingad = true;
+  InterstitialAd? _interstitialAd;
+  int _numInterstitialLoadAttempts = 0;
+  static const int _maxFailedLoadAttempts = 3;
 
   @override
   void initState() {
     super.initState();
+    _initializeAds();
     _loadNotifications();
-    _loadBannerAd();
+    Future.delayed(const Duration(seconds: 2), _showInterstitialAd);
+  }
+
+  void _initializeAds() {
+    try {
+      MobileAds.instance.initialize();
+      _loadBannerAd();
+      _loadInterstitialAd();
+    } catch (e) {
+      debugPrint('Error initializing ads: $e');
+    }
   }
 
   Future<void> _loadNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final starredCodes = prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+      final starredCodes =
+          prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
       final List<Map<String, dynamic>> notifications = [];
+      final seenCompositeKeys = <String>{};
 
-      for (var compositeKey in starredCodes) {
-        final notificationData = prefs.getString('notification_$compositeKey');
-        if (notificationData != null) {
-          try {
-            final data = jsonDecode(notificationData) as Map<String, dynamic>;
-            // Debug: Log na2_code to verify
-            debugPrint('Notification na2_code for $compositeKey: ${data['na2_code']}');
-            notifications.add(data);
-          } catch (e) {
-            debugPrint('Error decoding notification for $compositeKey: $e');
+      for (var code in starredCodes) {
+        if (code.contains('_')) {
+// Single notification
+          final notificationData = prefs.getString('notification_$code');
+          if (notificationData != null) {
+            try {
+              final data = jsonDecode(notificationData) as Map<String, dynamic>;
+              debugPrint(
+                  'Loaded notification for $code: na2_code=${data['na2_code']}, payment_date=${data['payment_date']}');
+              notifications.add(data);
+              seenCompositeKeys.add(code);
+            } catch (e) {
+              debugPrint('Error decoding notification for $code: $e');
+            }
+          }
+        } else {
+// All notifications for na2_code
+          final na2Code = code;
+          final allKeys = prefs
+              .getKeys()
+              .where((key) => key.startsWith('notification_${na2Code}_'))
+              .toList();
+          for (var key in allKeys) {
+            final compositeKey = key.replaceFirst('notification_', '');
+            if (seenCompositeKeys.contains(compositeKey)) continue;
+            final notificationData = prefs.getString(key);
+            if (notificationData != null) {
+              try {
+                final data =
+                    jsonDecode(notificationData) as Map<String, dynamic>;
+                debugPrint(
+                    'Loaded notification for $compositeKey: na2_code=${data['na2_code']}, payment_date=${data['payment_date']}');
+                notifications.add(data);
+                seenCompositeKeys.add(compositeKey);
+              } catch (e) {
+                debugPrint('Error decoding notification for $key: $e');
+              }
+            }
           }
         }
       }
 
-      // Sort notifications by timestamp (newest first)
+// Sort notifications by timestamp (newest first)
       notifications.sort((a, b) {
-        final aTimestamp = a['timestamp']?.toString() ?? '';
-        final bTimestamp = b['timestamp']?.toString() ?? '';
+        final aTimestamp =
+            DateTime.tryParse(a['timestamp']?.toString() ?? '') ?? DateTime(0);
+        final bTimestamp =
+            DateTime.tryParse(b['timestamp']?.toString() ?? '') ?? DateTime(0);
         return bTimestamp.compareTo(aTimestamp);
       });
 
@@ -62,11 +106,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(Localization.translate('error_loading_notifications')),
-          ),
-        );
+      });
+      Future.microtask(() {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text(Localization.translate('error_loading_notifications')),
+            ),
+          );
+        }
       });
       debugPrint('Error loading notifications: $e');
     }
@@ -75,72 +124,336 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _clearNotification(String compositeKey) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('notification_$compositeKey');
-      await _loadNotifications();
+      final removed = await prefs.remove('notification_$compositeKey');
+      debugPrint('Cleared notification_$compositeKey, success: $removed');
+      if (removed) {
+        await _loadNotifications();
+        _showInterstitialAd();
+        Future.microtask(() {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    Localization.translate('notification_cleared_success')),
+              ),
+            );
+          }
+        });
+      } else {
+        debugPrint('Notification not found: notification_$compositeKey');
+      }
     } catch (e) {
       debugPrint('Error clearing notification: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(Localization.translate('error_clearing_notification')),
-        ),
-      );
+      Future.microtask(() {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text(Localization.translate('error_clearing_notification')),
+            ),
+          );
+        }
+      });
     }
   }
 
   void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-7480088562684396/3085989451', // Replace with actual ad unit ID
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (_) {
-          setState(() {
-            _isAdLoaded = true;
-          });
-        },
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
-          setState(() {
-            _isAdLoaded = false;
-            _bannerAd = null;
-          });
-        },
-      ),
-    );
-    _bannerAd!.load();
+    try {
+      _bannerAd = BannerAd(
+        adUnitId: 'ca-app-pub-7480088562684396/3085989451',
+        size: AdSize.banner,
+        request: const AdRequest(),
+        listener: BannerAdListener(
+          onAdLoaded: (_) {
+            setState(() {
+              _isAdLoaded = true;
+            });
+          },
+          onAdFailedToLoad: (ad, error) {
+            debugPrint('Banner ad failed to load: $error');
+            ad.dispose();
+            setState(() {
+              _isAdLoaded = false;
+              _bannerAd = null;
+            });
+          },
+        ),
+      );
+      _bannerAd?.load();
+    } catch (e) {
+      debugPrint('Error loading banner ad: $e');
+      setState(() {
+        _isAdLoaded = false;
+        _bannerAd = null;
+      });
+    }
+  }
+
+  void _loadInterstitialAd() {
+    debugPrint('Loading interstitial ad');
+    try {
+      InterstitialAd.load(
+        adUnitId: 'ca-app-pub-7480088562684396/8494399235',
+        request: const AdRequest(),
+        adLoadCallback: InterstitialAdLoadCallback(
+          onAdLoaded: (ad) {
+            debugPrint('Interstitial ad loaded');
+            setState(() {
+              _interstitialAd = ad;
+              _numInterstitialLoadAttempts = 0;
+            });
+            ad.fullScreenContentCallback = FullScreenContentCallback(
+              onAdShowedFullScreenContent: (ad) {
+                debugPrint('Interstitial ad displayed');
+              },
+              onAdDismissedFullScreenContent: (ad) {
+                debugPrint('Interstitial ad dismissed');
+                ad.dispose();
+                setState(() {
+                  _interstitialAd = null;
+                });
+                _loadInterstitialAd();
+              },
+              onAdFailedToShowFullScreenContent: (ad, error) {
+                debugPrint('Interstitial ad failed to show: $error');
+                ad.dispose();
+                setState(() {
+                  _interstitialAd = null;
+                });
+                _loadInterstitialAd();
+              },
+            );
+          },
+          onAdFailedToLoad: (error) {
+            debugPrint('Interstitial ad failed to load: $error');
+            setState(() {
+              _numInterstitialLoadAttempts += 1;
+              _interstitialAd = null;
+            });
+            if (_numInterstitialLoadAttempts < _maxFailedLoadAttempts) {
+              _loadInterstitialAd();
+            } else {
+              Future.microtask(() {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        Localization.translate('interstitial_ad_load_error')
+                            .replaceAll('{error}', error.message),
+                      ),
+                    ),
+                  );
+                }
+              });
+            }
+          },
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error loading interstitial ad: $e');
+    }
+  }
+
+  void _showInterstitialAd() {
+    if (_interstitialAd != null) {
+      debugPrint('Showing interstitial ad');
+      _interstitialAd!.show();
+    } else {
+      debugPrint('Interstitial ad not loaded');
+    }
   }
 
   @override
   void dispose() {
     _bannerAd?.dispose();
-    NotificationService().checkAndSendTaxNotifications();
+    _interstitialAd?.dispose();
     super.dispose();
+    _isAdLoaded = false;
   }
 
   Future<void> _refreshNotifications() async {
-    final prefs = await SharedPreferences.getInstance();
-    final starredCodes = prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(Localization.translate('confirm_refresh')),
+        content: Text(Localization.translate('confirm_refresh_message')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(Localization.translate('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(Localization.translate('confirm')),
+          ),
+        ],
+      ),
+    );
 
-    // Clear existing notifications from shared_preferences
-    for (var code in starredCodes) {
-      await prefs.remove('notification_$code');
-      await prefs.remove('notification_sent_$code');
+    if (confirm != true) return;
+
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      final starredCodes =
+          prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+
+// Clear existing notifications
+      for (var code in starredCodes) {
+        final notificationKeys = prefs
+            .getKeys()
+            .where((key) => key.startsWith('notification_${code}_'))
+            .toList();
+        for (var key in notificationKeys) {
+          await prefs.remove(key);
+          debugPrint('Removed $key');
+        }
+        await prefs.remove('notification_sent_$code');
+      }
+
+// Clear active notifications
+      await NotificationService().cancelAllNotifications();
+
+// Reset UI
+      setState(() {
+        _notifications = [];
+      });
+
+// Re-evaluate notifications
+      await NotificationService().checkAndSendTaxNotifications();
+
+// Reload notifications
+      await _loadNotifications();
+
+      Future.microtask(() {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  Localization.translate('notifications_refreshed_success')),
+            ),
+          );
+        }
+      });
+      _showInterstitialAd();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      Future.microtask(() {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  Localization.translate('error_refreshing_notifications')),
+            ),
+          );
+        }
+      });
+      debugPrint('Error refreshing notifications: $e');
+    }
+  }
+
+  void _showNotificationDetails(
+      BuildContext context, Map<String, dynamic> notification) {
+    final taxName = Localization.currentLanguage == 'ru'
+        ? notification['tax_name_ru']?.toString() ??
+            Localization.translate('unknown')
+        : notification['tax_name_uz']?.toString() ??
+            Localization.translate('unknown');
+    final na2Code = notification['na2_code']?.toString() ??
+        Localization.translate('unknown');
+    final paymentDate = notification['payment_date']?.toString() ??
+        Localization.translate('unknown');
+    final period = Localization.currentLanguage == 'ru'
+        ? notification['period_ru']?.toString() ??
+            Localization.translate('unknown')
+        : notification['period_uz']?.toString() ??
+            Localization.translate('unknown');
+    final ynl =
+        notification['YNL']?.toString() ?? Localization.translate('unknown');
+    final timestamp = notification['timestamp']?.toString() ?? '';
+    final dateFormat = Localization.currentLanguage == 'ru'
+        ? 'dd.MM.yyyy HH:mm'
+        : 'yyyy-MM-dd HH:mm';
+    final formattedNotifiedAt = timestamp.isNotEmpty
+        ? DateFormat(dateFormat).format(DateTime.parse(timestamp))
+        : Localization.translate('unknown');
+
+    String daysUntilText = Localization.translate('unknown_date');
+    if (paymentDate.isNotEmpty) {
+      try {
+        final paymentDateParsed = DateTime.parse(paymentDate);
+        final today = DateTime.now();
+        final paymentDateOnly = DateTime(paymentDateParsed.year,
+            paymentDateParsed.month, paymentDateParsed.day);
+        final todayOnly = DateTime(today.year, today.month, today.day);
+        final daysUntil = paymentDateOnly.difference(todayOnly).inDays;
+        final key = daysUntil >= 0
+            ? (daysUntil == 1 ? 'days_until_one' : 'days_until')
+            : (daysUntil == -1 ? 'payment_overdue_one' : 'payment_overdue');
+        daysUntilText = Localization.translate(key)
+            .replaceAll('{days}', daysUntil.abs().toString());
+      } catch (e) {
+        debugPrint('Error parsing payment date: $e');
+        daysUntilText = Localization.translate('invalid_date');
+      }
     }
 
-    // Clear active notifications in the notification tray
-    // final notificationsPlugin = NotificationService()._notificationsPlugin;
-    // await notificationsPlugin.cancelAll();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(Localization.translate('notification_details')),
+          contentPadding: const EdgeInsets.all(16),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildDetailRow(
+                    context, Localization.translate('tax_name'), taxName),
+                _buildDetailRow(
+                    context, Localization.translate('na2_code'), na2Code),
+                _buildDetailRow(context, Localization.translate('YNL'), ynl),
+                _buildDetailRow(
+                    context, Localization.translate('period'), period),
+                _buildDetailRow(context, Localization.translate('payment_date'),
+                    paymentDate),
+                _buildDetailRow(
+                    context,
+                    Localization.translate('days_until_payment'),
+                    daysUntilText),
+                _buildDetailRow(context, Localization.translate('notified_at'),
+                    formattedNotifiedAt),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(Localization.translate('close')),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    // Reset the UI
-    setState(() {
-      _notifications = [];
-    });
-
-    // Re-evaluate and send new notifications
-    await NotificationService().checkAndSendTaxNotifications();
-
-    // Reload notifications to update the UI
-    await _loadNotifications();
+  Widget _buildDetailRow(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 16,
+          color: Theme.of(context).textTheme.bodyMedium?.color,
+        ),
+      ),
+    );
   }
 
   @override
@@ -152,7 +465,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh),
             onPressed: _refreshNotifications,
             tooltip: Localization.translate('refresh_notifications'),
           ),
@@ -160,11 +473,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       body: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(12),
         child: _isLoading
             ? Center(
-                child: CircularProgressIndicator(
-                  color: Theme.of(context).primaryColor,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      Localization.translate('loading'),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                    ),
+                  ],
                 ),
               )
             : _notifications.isEmpty
@@ -181,115 +507,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     itemCount: _notifications.length,
                     itemBuilder: (context, index) {
                       final notification = _notifications[index];
-                      final compositeKey =
-                          '${notification['na2_code']}_${notification['payment_date']}';
+                      final na2Code =
+                          notification['na2_code']?.toString() ?? '';
+                      final paymentDate =
+                          notification['payment_date']?.toString() ?? '';
+                      final compositeKey = paymentDate.isNotEmpty
+                          ? '${na2Code}_$paymentDate'
+                          : na2Code;
                       return Padding(
-                        padding: EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.only(bottom: 16),
                         child: NotificationCard(
                           notification: notification,
-                          onDismiss: () async {
-                            await _clearNotification(compositeKey);
-                          },
-                          onInfoPressed: () {
-                            _showNotificationDetails(context, notification);
-                          },
+                          onDismiss: () => _clearNotification(compositeKey),
+                          onInfoPressed: () =>
+                              _showNotificationDetails(context, notification),
                         ),
                       );
                     },
                   ),
-      ),bottomNavigationBar: BottomAppBar(
-      child: Container(
-        child: _isAdLoaded && _bannerAd != null
-            ? SizedBox(
-          height: _bannerAd!.size.height.toDouble(),
-          width: _bannerAd!.size.width.toDouble(),
-          child: AdWidget(ad: _bannerAd!),
-        )
-            : const SizedBox.shrink(),
       ),
-    ),
-    );
-  }
-
-  void _showNotificationDetails(
-      BuildContext context, Map<String, dynamic> notification) {
-    final String taxName = Localization.currentLanguage == 'ru'
-        ? notification['tax_name_ru']?.toString() ?? ''
-        : notification['tax_name_uz']?.toString() ?? '';
-    final String rawNa2Code = notification['na2_code']?.toString() ?? '';
-    final String na2Code = rawNa2Code.contains('_')
-        ? rawNa2Code.split('_').first
-        : rawNa2Code;
-    final String paymentDate = notification['payment_date']?.toString() ?? '';
-    final String timestamp = notification['timestamp']?.toString() ?? '';
-    final String ynl = notification['ynl']?.toString() ?? '';
-    final String period = Localization.currentLanguage == 'ru'
-        ? notification['period_ru']?.toString() ?? ''
-        : notification['period_uz']?.toString() ?? '';
-    final DateTime notifiedAt = DateTime.parse(timestamp);
-    final String formattedNotifiedAt =
-        '${notifiedAt.day.toString().padLeft(2, '0')}.${notifiedAt.month.toString().padLeft(2, '0')}.${notifiedAt.year} ${notifiedAt.hour.toString().padLeft(2, '0')}:${notifiedAt.minute.toString().padLeft(2, '0')}';
-
-    // Calculate days until payment
-    int daysUntil;
-    try {
-      final paymentDateParsed = DateTime.parse(paymentDate);
-      final today = DateTime.now();
-      final paymentDateOnly = DateTime(paymentDateParsed.year,
-          paymentDateParsed.month, paymentDateParsed.day);
-      final todayOnly = DateTime(today.year, today.month, today.day);
-      daysUntil = paymentDateOnly.difference(todayOnly).inDays;
-    } catch (e) {
-      daysUntil = 0; // Fallback if date parsing fails
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(Localization.translate('notification_details')),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${Localization.translate('tax_name')}: $taxName',
-                  style: TextStyle(fontSize: 16),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '${Localization.translate('na2_code')}: $na2Code',
-                  style: TextStyle(fontSize: 16),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '${Localization.translate('payment_date')}: $paymentDate',
-                  style: TextStyle(fontSize: 16),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '${Localization.translate('days_until_payment')}: $daysUntil',
-                  style: TextStyle(fontSize: 16),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '${Localization.translate('notified_at')}: $formattedNotifiedAt',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text(Localization.translate('close')),
-            ),
-          ],
-        );
-      },
+      bottomNavigationBar: _isAdLoaded && _bannerAd != null
+          ? Container(
+              height: _bannerAd!.size.height.toDouble(),
+              width: _bannerAd!.size.width.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
@@ -300,28 +543,35 @@ class NotificationCard extends StatelessWidget {
   final VoidCallback onInfoPressed;
 
   const NotificationCard({
+    Key? key,
     required this.notification,
     required this.onDismiss,
     required this.onInfoPressed,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final String taxName = Localization.currentLanguage == 'ru'
-        ? notification['tax_name_ru']?.toString() ?? ''
-        : notification['tax_name_uz']?.toString() ?? '';
-    final String timestamp = notification['timestamp']?.toString() ?? '';
-    final DateTime dateTime = DateTime.parse(timestamp);
-    final String rawNa2Code = notification['na2_code']?.toString() ?? '';
-    final String period = notification['period']?.toString() ?? '';
-    final String periods = Localization.currentLanguage == 'ru'
-        ? notification['period_uz']?.toString() ?? ''
-        : notification['period_uz']?.toString() ?? '';
-    final String na2Code = rawNa2Code.contains('_')
-        ? rawNa2Code.split('_').first
-        : rawNa2Code;
-    final String formattedTime =
-        '${dateTime.day.toString().padLeft(2, '0')}.${dateTime.month.toString().padLeft(2, '0')}.${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    final taxName = Localization.currentLanguage == 'ru'
+        ? notification['tax_name_ru']?.toString() ??
+            Localization.translate('unknown')
+        : notification['tax_name_uz']?.toString() ??
+            Localization.translate('unknown');
+    final period = Localization.currentLanguage == 'ru'
+        ? notification['period_ru']?.toString() ??
+            Localization.translate('unknown')
+        : notification['period_uz']?.toString() ??
+            Localization.translate('unknown');
+    final na2Code = notification['na2_code']?.toString() ??
+        Localization.translate('unknown');
+    final paymentDate = notification['payment_date']?.toString() ??
+        Localization.translate('unknown');
+    final timestamp = notification['timestamp']?.toString() ?? '';
+    final dateFormat = Localization.currentLanguage == 'ru'
+        ? 'dd.MM.yyyy HH:mm'
+        : 'yyyy-MM-dd HH:mm';
+    final formattedTime = timestamp.isNotEmpty
+        ? DateFormat(dateFormat).format(DateTime.parse(timestamp))
+        : Localization.translate('unknown');
 
     return Container(
       decoration: BoxDecoration(
@@ -332,12 +582,12 @@ class NotificationCard extends StatelessWidget {
             color: Colors.grey.withOpacity(0.2),
             spreadRadius: 2,
             blurRadius: 5,
-            offset: Offset(0, 3),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -354,9 +604,9 @@ class NotificationCard extends StatelessWidget {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    '${Localization.translate('payment_date')}: ${notification['payment_date']?.toString() ?? ''}',
+                    '${Localization.translate('payment_date')}: $paymentDate',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -364,7 +614,7 @@ class NotificationCard extends StatelessWidget {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
                     '${Localization.translate('na2_code')}: $na2Code',
                     style: TextStyle(
@@ -373,16 +623,16 @@ class NotificationCard extends StatelessWidget {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    '${Localization.translate('period')}: $periods',
+                    '${Localization.translate('period')}: $period',
                     style: TextStyle(
                       fontSize: 16,
                       color: Theme.of(context).textTheme.bodyMedium?.color,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
                     '${Localization.translate('notified_at')}: $formattedTime',
                     style: TextStyle(

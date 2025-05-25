@@ -47,36 +47,105 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
     });
   }
 
-  Future<void> _toggleStarredTaxCode(Map<String, dynamic> payment) async {
+  Future<void> _toggleStarredTaxCode(Map<String, dynamic> payment, BuildContext context) async {
     final notificationService = NotificationService();
     final prefs = await SharedPreferences.getInstance();
-    final na2Code = payment['na2_code'];
+    final na2Code = payment['na2_code']?.toString() ?? '';
     final paymentDate = payment['payment_date']?.toString() ?? '';
-    final compositeKey = '${na2Code}_$paymentDate'; // Create composite key
+    final compositeKey = '${na2Code}_$paymentDate';
 
-    // Debug: Log the values to verify
+    // Debug: Log values
     debugPrint('na2Code: $na2Code, paymentDate: $paymentDate, compositeKey: $compositeKey');
 
-    setState(() {
-      if (_starredTaxCodes.contains(compositeKey)) {
-        _starredTaxCodes.remove(compositeKey);
-        prefs.remove('tax_$compositeKey');
-      } else {
-        _starredTaxCodes.add(compositeKey);
-        final taxData = {
-          'na2_code': payment['na2_code'], // Store only the na2_code (e.g., '32')
-          'payment_date': paymentDate,
-          'tax_name_uz': payment['tax_name_uz']?.toString() ?? '',
-          'tax_name_ru': payment['tax_name_ru']?.toString() ?? '',
-          'ynl': payment['YNL']?.toString() ?? '',
-          'period': payment['period']?.toString() ?? '',
-          'period_uz': payment['period_uz']?.toString() ?? '',
-          'period_ru': payment['PERIOD_RU']?.toString() ?? '',
-        };
-        prefs.setString('tax_$compositeKey', jsonEncode(taxData));
-      }
-      prefs.setStringList('starred_tax_codes', _starredTaxCodes.toList());
-    });
+    // Check if already starred
+    bool isStarred = _starredTaxCodes.contains(compositeKey) || _starredTaxCodes.contains(na2Code);
+
+    if (isStarred) {
+      // Unstar: Remove specific date or all dates
+      setState(() {
+        if (_starredTaxCodes.contains(compositeKey)) {
+          _starredTaxCodes.remove(compositeKey);
+          prefs.remove('tax_$compositeKey');
+        } else if (_starredTaxCodes.contains(na2Code)) {
+          _starredTaxCodes.remove(na2Code);
+          // Remove all related composite keys
+          final allKeys = prefs.getKeys().where((key) => key.startsWith('tax_${na2Code}_')).toList();
+          for (var key in allKeys) {
+            prefs.remove(key);
+          }
+        }
+        prefs.setStringList('starred_tax_codes', _starredTaxCodes.toList());
+      });
+    } else {
+      // Star: Prompt user to choose specific date or all dates
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text(Localization.translate('star_tax_code')),
+            content: Text(Localization.translate('star_single_or_all_dates')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'single'),
+                child: Text(Localization.translate('this_date_only')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'all'),
+                child: Text(Localization.translate('all_dates')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: Text(Localization.translate('cancel')),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (choice == null) return; // User cancelled
+
+      setState(() {
+        if (choice == 'single') {
+          // Star specific payment date
+          _starredTaxCodes.add(compositeKey);
+          final taxData = {
+            'na2_code': na2Code,
+            'payment_date': paymentDate,
+            'tax_name_uz': payment['tax_name_uz']?.toString() ?? '',
+            'tax_name_ru': payment['tax_name_ru']?.toString() ?? '',
+            'ynl': payment['YNL']?.toString() ?? '',
+            'period': payment['period']?.toString() ?? '',
+            'period_uz': payment['period_uz']?.toString() ?? '',
+            'period_ru': payment['PERIOD_RU']?.toString() ?? '',
+          };
+          prefs.setString('tax_$compositeKey', jsonEncode(taxData));
+        } else if (choice == 'all') {
+          // Star all payment dates for this tax code
+          _starredTaxCodes.add(na2Code);
+          // Filter payment dates for this na2_code from _paymentDates
+          final relatedPayments = _paymentDates.where((p) => p['na2_code']?.toString() == na2Code).toList();
+          for (var p in relatedPayments) {
+            final pDate = p['payment_date']?.toString() ?? '';
+            if (pDate.isEmpty) continue;
+            final pCompositeKey = '${na2Code}_$pDate';
+            final taxData = {
+              'na2_code': na2Code,
+              'payment_date': pDate,
+              'tax_name_uz': p['tax_name_uz']?.toString() ?? payment['tax_name_uz']?.toString() ?? '',
+              'tax_name_ru': p['tax_name_ru']?.toString() ?? payment['tax_name_ru']?.toString() ?? '',
+              'ynl': p['YNL']?.toString() ?? payment['YNL']?.toString() ?? '',
+              'period': p['period']?.toString() ?? payment['period']?.toString() ?? '',
+              'period_uz': p['period_uz']?.toString() ?? payment['period_uz']?.toString() ?? '',
+              'period_ru': p['PERIOD_RU']?.toString() ?? payment['PERIOD_RU']?.toString() ?? '',
+            };
+            prefs.setString('tax_$pCompositeKey', jsonEncode(taxData));
+            print('tax_$pCompositeKey');
+          }
+        }
+        prefs.setStringList('starred_tax_codes', _starredTaxCodes.toList());
+      });
+    }
+
     await notificationService.init();
     await notificationService.checkAndSendTaxNotifications();
   }
@@ -159,15 +228,15 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
             (payment['YNL']?.toString() ?? '') == _selectedYNL;
         final bool matchesPeriod = _selectedPeriod == null ||
             (Localization.currentLanguage == 'ru'
-                    ? (payment['PERIOD_RU']?.toString() ?? '')
-                    : (payment['period_uz']?.toString() ?? '')) ==
+                ? (payment['PERIOD_RU']?.toString() ?? '')
+                : (payment['period_uz']?.toString() ?? '')) ==
                 _selectedPeriod;
         final bool matchesNa2Code = _selectedNa2Code == null ||
             (payment['na2_code']?.toString() ?? '') == _selectedNa2Code;
         final bool matchesSearch = _searchQuery == null ||
             (Localization.currentLanguage == 'ru'
-                    ? (payment['tax_name_ru']?.toString() ?? '')
-                    : (payment['tax_name_uz']?.toString() ?? ''))
+                ? (payment['tax_name_ru']?.toString() ?? '')
+                : (payment['tax_name_uz']?.toString() ?? ''))
                 .toLowerCase()
                 .contains(_searchQuery!.toLowerCase());
         return matchesYNL && matchesPeriod && matchesNa2Code && matchesSearch;
@@ -366,12 +435,12 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                           ),
                         ),
                         ..._ynlOptions.map((ynl) => DropdownMenuItem(
-                              value: ynl,
-                              child: Text(
-                                ynl,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            )),
+                          value: ynl,
+                          child: Text(
+                            ynl,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )),
                       ],
                       onChanged: (value) {
                         setState(() {
@@ -385,19 +454,19 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color:
-                                Theme.of(context).textTheme.bodyMedium?.color,
+                            Theme.of(context).textTheme.bodyMedium?.color,
                           ),
                         ),
                         ..._ynlOptions.map((ynl) => Text(
-                              ynl,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.color,
-                              ),
-                            )),
+                          ynl,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.color,
+                          ),
+                        )),
                       ],
                     ),
                   ),
@@ -431,16 +500,16 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                           ),
                         ),
                         ..._periodOptions.map((p) => DropdownMenuItem(
-                              value: Localization.currentLanguage == 'ru'
-                                  ? p['PERIOD_RU'] as String
-                                  : p['period_uz'] as String,
-                              child: Text(
-                                Localization.currentLanguage == 'ru'
-                                    ? p['PERIOD_RU'] as String
-                                    : p['period_uz'] as String,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            )),
+                          value: Localization.currentLanguage == 'ru'
+                              ? p['PERIOD_RU'] as String
+                              : p['period_uz'] as String,
+                          child: Text(
+                            Localization.currentLanguage == 'ru'
+                                ? p['PERIOD_RU'] as String
+                                : p['period_uz'] as String,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )),
                       ],
                       onChanged: (value) {
                         setState(() {
@@ -455,21 +524,21 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color:
-                                Theme.of(context).textTheme.bodyMedium?.color,
+                            Theme.of(context).textTheme.bodyMedium?.color,
                           ),
                         ),
                         ..._periodOptions.map((p) => Text(
-                              Localization.currentLanguage == 'ru'
-                                  ? p['PERIOD_RU'] as String
-                                  : p['period_uz'] as String,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.color,
-                              ),
-                            )),
+                          Localization.currentLanguage == 'ru'
+                              ? p['PERIOD_RU'] as String
+                              : p['period_uz'] as String,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.color,
+                          ),
+                        )),
                       ],
                     ),
                   ),
@@ -504,12 +573,12 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                     ),
                   ),
                   ..._na2CodeOptions.map((code) => DropdownMenuItem(
-                        value: code,
-                        child: Text(
-                          code,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      )),
+                    value: code,
+                    child: Text(
+                      code,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )),
                 ],
                 onChanged: (value) {
                   setState(() {
@@ -526,12 +595,12 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                     ),
                   ),
                   ..._na2CodeOptions.map((code) => Text(
-                        code,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Theme.of(context).textTheme.bodyMedium?.color,
-                        ),
-                      )),
+                    code,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  )),
                 ],
               ),
             ),
@@ -553,79 +622,78 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
             Expanded(
               child: _isLoading
                   ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(
-                            color: Theme.of(context).primaryColor,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            Localization.translate('loading'),
-                            style: TextStyle(
-                              fontSize: 18,
-                              color:
-                                  Theme.of(context).textTheme.bodyMedium?.color,
-                            ),
-                          ),
-                        ],
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      Localization.translate('loading'),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color:
+                        Theme.of(context).textTheme.bodyMedium?.color,
                       ),
-                    )
+                    ),
+                  ],
+                ),
+              )
                   : _errorMessage != null
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                color: Colors.red,
-                                size: 48,
-                              ),
-                              SizedBox(height: 16),
-                              Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.red,
-                                ),
-                              ),
-                              SizedBox(height: 16),
-                              ElevatedButton(
-                                onPressed: _fetchPaymentDates,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                      Theme.of(context).primaryColor,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                                child: Text(
-                                  Localization.translate('try_again'),
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : _filteredPaymentDates.isEmpty
-                          ? Center(
-                              child: Text(
-                                Localization.translate('no_data'),
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.color,
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.red,
+                      size: 48,
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      _errorMessage!,
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.red,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _fetchPaymentDates,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                        Theme.of(context).primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(
+                        Localization.translate('try_again'),
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+                  : _filteredPaymentDates.isEmpty
+                  ? Center(
+                child: Text(
+                  Localization.translate('no_data'),
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.color,
+                  ),
+                ),
+              )
+                  : ListView.builder(
                 itemCount: _filteredPaymentDates.length,
                 itemBuilder: (context, index) {
                   final payment = _filteredPaymentDates[index];
                   final na2Code = payment['na2_code']?.toString() ?? '';
-                  final period = payment['period_ru']?.toString() ?? '';
                   final paymentDate = payment['payment_date']?.toString() ?? '';
                   final compositeKey = '${na2Code}_$paymentDate';
 
@@ -633,8 +701,9 @@ class _TaxPaymentDatesScreenState extends State<TaxPaymentDatesScreen> {
                     padding: EdgeInsets.only(bottom: 16),
                     child: PaymentDateCard(
                       payment: payment,
-                      isStarred: _starredTaxCodes.contains(compositeKey), // Updated check
-                      onStarToggled: () => _toggleStarredTaxCode(payment),
+                      isStarred: _starredTaxCodes.contains(compositeKey) ||
+                          _starredTaxCodes.contains(na2Code),
+                      onStarToggled: () => _toggleStarredTaxCode(payment, context),
                       onInfoPressed: () => _showTaxDetails(context, payment),
                     ),
                   );

@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'localization.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:uztools/notification_service.dart';
+import 'localization.dart';
 
 class SavedTaxesScreen extends StatefulWidget {
   const SavedTaxesScreen({Key? key}) : super(key: key);
@@ -18,35 +19,78 @@ class _SavedTaxesScreenState extends State<SavedTaxesScreen> {
   BannerAd? _bannerAd;
   InterstitialAd? _interstitialAd;
   int _numInterstitialLoadAttempts = 0;
-  final int _maxFailedLoadAttempts = 3;
+  static const int _maxFailedLoadAttempts = 3;
 
   @override
   void initState() {
     super.initState();
+    _initializeAds();
     _loadSavedTaxes();
-    _loadBannerAd();
-    _loadInterstitialAd();
+    Future.delayed(const Duration(seconds: 2), _showInterstitialAd);
+  }
+
+  void _initializeAds() {
+    try {
+      MobileAds.instance.initialize();
+      _loadBannerAd();
+      _loadInterstitialAd();
+    } catch (e) {
+      debugPrint('Error initializing ads: $e');
+    }
   }
 
   Future<void> _loadSavedTaxes() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final starredCodes = prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+      final starredCodes =
+          prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
       final List<Map<String, dynamic>> taxes = [];
+      final seenCompositeKeys = <String>{};
 
-      for (var compositeKey in starredCodes) {
-        final taxData = prefs.getString('tax_$compositeKey');
-        if (taxData != null) {
-          try {
-            final data = jsonDecode(taxData) as Map<String, dynamic>;
-            // Debug: Log na2_code to verify
-            debugPrint('Saved tax na2_code for $compositeKey: ${data['na2_code']}');
-            taxes.add(data);
-          } catch (e) {
-            debugPrint('Error decoding tax for $compositeKey: $e');
+      for (var code in starredCodes) {
+        if (code.contains('_')) {
+          final taxData = prefs.getString('tax_$code');
+          if (taxData != null) {
+            try {
+              final data = jsonDecode(taxData) as Map<String, dynamic>;
+              debugPrint(
+                  'Loaded tax for $code: na2_code=${data['na2_code']}, payment_date=${data['payment_date']}');
+              taxes.add(data);
+              seenCompositeKeys.add(code);
+            } catch (e) {
+              debugPrint('Error decoding tax for $code: $e');
+            }
+          }
+        } else {
+          final na2Code = code;
+          final allKeys = prefs
+              .getKeys()
+              .where((key) => key.startsWith('tax_${na2Code}_'))
+              .toList();
+          for (var key in allKeys) {
+            final compositeKey = key.replaceFirst('tax_', '');
+            if (seenCompositeKeys.contains(compositeKey)) continue;
+            final taxData = prefs.getString(key);
+            if (taxData != null) {
+              try {
+                final data = jsonDecode(taxData) as Map<String, dynamic>;
+                debugPrint(
+                    'Loaded tax for $compositeKey: na2_code=${data['na2_code']}, payment_date=${data['payment_date']}');
+                taxes.add(data);
+                seenCompositeKeys.add(compositeKey);
+              } catch (e) {
+                debugPrint('Error decoding tax for $key: $e');
+              }
+            }
           }
         }
       }
+
+      taxes.sort((a, b) {
+        final dateA = a['payment_date']?.toString() ?? '';
+        final dateB = b['payment_date']?.toString() ?? '';
+        return dateA.compareTo(dateB);
+      });
 
       setState(() {
         _savedTaxes = taxes;
@@ -54,153 +98,272 @@ class _SavedTaxesScreenState extends State<SavedTaxesScreen> {
       });
     } catch (e) {
       setState(() {
+        _savedTaxes = [];
         _isLoading = false;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(Localization.translate('error_loading_taxes')),
-          ),
-        );
+      });
+      Future.microtask(() {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(Localization.translate('error_loading_taxes')),
+            ),
+          );
+        }
       });
       debugPrint('Error loading saved taxes: $e');
     }
   }
 
   void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-7480088562684396/3085989451',
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (_) {
-          setState(() {
-            _isAdLoaded = true;
-          });
-        },
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
-          setState(() {
-            _isAdLoaded = false;
-            _bannerAd = null;
-          });
-        },
-      ),
-    );
-    _bannerAd!.load();
+    try {
+      _bannerAd = BannerAd(
+        adUnitId: 'ca-app-pub-7480088562684396/3085989451',
+        size: AdSize.banner,
+        request: const AdRequest(),
+        listener: BannerAdListener(
+          onAdLoaded: (_) {
+            setState(() {
+              _isAdLoaded = true;
+            });
+          },
+          onAdFailedToLoad: (ad, error) {
+            debugPrint('Banner ad failed to load: $error');
+            ad.dispose();
+            setState(() {
+              _isAdLoaded = false;
+              _bannerAd = null;
+            });
+          },
+        ),
+      );
+      _bannerAd?.load();
+    } catch (e) {
+      debugPrint('Error loading banner ad: $e');
+      setState(() {
+        _isAdLoaded = false;
+        _bannerAd = null;
+      });
+    }
   }
 
   void _loadInterstitialAd() {
-    print("_loadInterstitialAd");
-    InterstitialAd.load(
-      adUnitId: 'ca-app-pub-7480088562684396/8494399235',
-      request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
-        onAdLoaded: (ad) {
-          setState(() {
-            print("_interstitialAd LOADED");
-            _interstitialAd = ad;
-            _numInterstitialLoadAttempts = 0;
-          });
-          ad.fullScreenContentCallback = FullScreenContentCallback(
-            onAdShowedFullScreenContent: (ad) {
-              print("_interstitialAd DISPLAYED");},
-            onAdDismissedFullScreenContent: (ad) {
-              ad.dispose();
-              setState(() {
-                _interstitialAd = null;
-              });
-              _loadInterstitialAd(); // Preload the next ad
-            },
-            onAdFailedToShowFullScreenContent: (ad, error) {
-              print("onAdFailedToShowFullScreenContent");
-              ad.dispose();
-              setState(() {
-                _interstitialAd = null;
-              });
-              _loadInterstitialAd(); // Try loading again
-            },
-          );
-        },
-        onAdFailedToLoad: (error) {
-          print("_loadInterstitialAd ERROR");
-          setState(() {
-            _numInterstitialLoadAttempts += 1;
-            _interstitialAd = null;
-          });
-          if (_numInterstitialLoadAttempts < _maxFailedLoadAttempts) {
-            _loadInterstitialAd(); // Retry loading
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  Localization.translate("interstitial_ad_load_error").replaceAll("{error}", error.message),
-                ),
-              ),
+    debugPrint('Loading interstitial ad');
+    try {
+      InterstitialAd.load(
+        adUnitId: 'ca-app-pub-7480088562684396/8494399235',
+        request: const AdRequest(),
+        adLoadCallback: InterstitialAdLoadCallback(
+          onAdLoaded: (ad) {
+            debugPrint('Interstitial ad loaded');
+            setState(() {
+              _interstitialAd = ad;
+              _numInterstitialLoadAttempts = 0;
+            });
+            ad.fullScreenContentCallback = FullScreenContentCallback(
+              onAdShowedFullScreenContent: (ad) {
+                debugPrint('Interstitial ad displayed');
+              },
+              onAdDismissedFullScreenContent: (ad) {
+                debugPrint('Interstitial ad dismissed');
+                ad.dispose();
+                setState(() {
+                  _interstitialAd = null;
+                });
+                _loadInterstitialAd();
+              },
+              onAdFailedToShowFullScreenContent: (ad, error) {
+                debugPrint('Interstitial ad failed to show: $error');
+                ad.dispose();
+                setState(() {
+                  _interstitialAd = null;
+                });
+                _loadInterstitialAd();
+              },
             );
-          }
-        },
-      ),
-    );
+          },
+          onAdFailedToLoad: (error) {
+            debugPrint('Interstitial ad failed to load: $error');
+            setState(() {
+              _numInterstitialLoadAttempts += 1;
+              _interstitialAd = null;
+            });
+            if (_numInterstitialLoadAttempts < _maxFailedLoadAttempts) {
+              _loadInterstitialAd();
+            } else {
+              Future.microtask(() {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        Localization.translate('interstitial_ad_load_error')
+                            .replaceAll('{error}', error.message),
+                      ),
+                    ),
+                  );
+                }
+              });
+            }
+          },
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error loading interstitial ad: $e');
+    }
   }
 
   void _showInterstitialAd() {
     if (_interstitialAd != null) {
+      debugPrint('Showing interstitial ad');
       _interstitialAd!.show();
+    } else {
+      debugPrint('Interstitial ad not loaded');
     }
   }
 
-  Future<void> _toggleStarredTax(String compositeKey) async {
+  Future<void> _toggleStarredTax(String code) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final starredCodes = prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+      final starredCodes =
+          prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+      final notificationService = NotificationService();
+
+      debugPrint(
+          'Initial starred_tax_codes: $starredCodes, attempting to unstar: $code');
+
+      bool success = false;
+      String? na2Code;
+      String? compositeKey;
+
+// Parse code
+      if (code.contains('_')) {
+        compositeKey = code;
+        na2Code = code.split('_').first;
+      } else {
+        na2Code = code;
+      }
 
       if (starredCodes.contains(compositeKey)) {
+// Unstar single payment date
         starredCodes.remove(compositeKey);
-        await prefs.remove('tax_$compositeKey');
-        await prefs.setStringList('starred_tax_codes', starredCodes.toList());
-        await _loadSavedTaxes(); // Refresh list
+        final removed = await prefs.remove('tax_$compositeKey');
+        debugPrint(
+            'Unstarred single tax: $compositeKey, tax_$compositeKey removed: $removed');
+        success = true;
+      } else if (starredCodes.contains(na2Code) && compositeKey != null) {
+// Unstar specific date when na2_code is starred
+        final removed = await prefs.remove('tax_$compositeKey');
+        debugPrint(
+            'Removed tax_$compositeKey for na2_code: $na2Code, success: $removed');
+
+// Get remaining tax entries for na2_code
+        final allKeys = prefs
+            .getKeys()
+            .where((key) => key.startsWith('tax_${na2Code}_'))
+            .toList();
+        if (allKeys.isEmpty) {
+// No remaining dates, remove na2_code
+          starredCodes.remove(na2Code);
+          debugPrint(
+              'No remaining tax entries for na2_code: $na2Code, removed from starred_tax_codes');
+        } else {
+// Replace na2_code with individual compositeKeys
+          starredCodes.remove(na2Code);
+          final newCompositeKeys =
+              allKeys.map((key) => key.replaceFirst('tax_', '')).toSet();
+          starredCodes.addAll(newCompositeKeys);
+          debugPrint(
+              'Replaced na2_code: $na2Code with compositeKeys: $newCompositeKeys');
+        }
+        success = true;
+      } else if (starredCodes.contains(na2Code)) {
+// Unstar all payment dates for na2_code
+        starredCodes.remove(na2Code);
+        final allKeys = prefs
+            .getKeys()
+            .where((key) => key.startsWith('tax_${na2Code}_'))
+            .toList();
+        if (allKeys.isEmpty) {
+          debugPrint('No tax entries found for na2_code: $na2Code');
+        }
+        for (var key in allKeys) {
+          final removed = await prefs.remove(key);
+          debugPrint('Removed tax entry: $key, success: $removed');
+        }
+        debugPrint('Unstarred all taxes for na2_code: $na2Code');
+        success = true;
+      } else {
+        debugPrint('Code not found in starred_tax_codes: $code');
+      }
+
+      if (success) {
+// Save updated starred_tax_codes
+        final saveSuccess = await prefs.setStringList(
+            'starred_tax_codes', starredCodes.toList());
+        debugPrint(
+            'Saved starred_tax_codes: $starredCodes, success: $saveSuccess');
+
+// Verify save
+        final updatedCodes =
+            prefs.getStringList('starred_tax_codes')?.toSet() ?? {};
+        debugPrint('Verified starred_tax_codes after save: $updatedCodes');
+
+        await _loadSavedTaxes();
+        await notificationService.init();
+        await notificationService.checkAndSendTaxNotifications();
+        setState(() {});
+        _showInterstitialAd();
+        Future.microtask(() {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(compositeKey != null && starredCodes.isNotEmpty
+                    ? Localization.translate('tax_date_unstarred_success')
+                    : Localization.translate('tax_unstarred_success')),
+              ),
+            );
+          }
+        });
       }
     } catch (e) {
       debugPrint('Error toggling starred tax: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(Localization.translate('error_toggling_tax')),
-        ),
-      );
+      Future.microtask(() {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(Localization.translate('error_toggling_tax')),
+            ),
+          );
+        }
+      });
     }
   }
 
   void _showTaxDetails(BuildContext context, Map<String, dynamic> tax) {
-    final String taxName = Localization.currentLanguage == 'ru'
-        ? tax['tax_name_ru']?.toString() ?? ''
-        : tax['tax_name_uz']?.toString() ?? '';
-    final String rawNa2Code = tax['na2_code']?.toString() ?? '';
-    final String na2Code = rawNa2Code.contains('_')
-        ? rawNa2Code.split('_').first
-        : rawNa2Code;
-    final String paymentDate = tax['payment_date']?.toString() ?? '';
-    final String period = Localization.currentLanguage == 'ru'
-        ? tax['period_uz']?.toString() ?? ''
-        : tax['period_uz']?.toString() ?? '';
-    final String ynl = tax['ynl']?.toString() ?? '';
+    final taxName = Localization.currentLanguage == 'ru'
+        ? tax['tax_name_ru']?.toString() ?? Localization.translate('unknown')
+        : tax['tax_name_uz']?.toString() ?? Localization.translate('unknown');
+    final na2Code =
+        tax['na2_code']?.toString() ?? Localization.translate('unknown');
+    final paymentDate = tax['payment_date']?.toString() ?? '';
+    final period = Localization.currentLanguage == 'ru'
+        ? tax['period_ru']?.toString() ?? Localization.translate('unknown')
+        : tax['period_uz']?.toString() ?? Localization.translate('unknown');
+    final ynl = tax['YNL']?.toString() ?? Localization.translate('unknown');
 
-    // Debug: Log na2Code to verify
-    debugPrint('Showing tax details, na2Code: $na2Code');
-
-    // Calculate days until payment
     String daysUntilText = Localization.translate('unknown_date');
     if (paymentDate.isNotEmpty) {
       try {
         final paymentDateParsed = DateTime.parse(paymentDate);
         final today = DateTime.now();
-        final paymentDateOnly = DateTime(
-            paymentDateParsed.year, paymentDateParsed.month, paymentDateParsed.day);
+        final paymentDateOnly = DateTime(paymentDateParsed.year,
+            paymentDateParsed.month, paymentDateParsed.day);
         final todayOnly = DateTime(today.year, today.month, today.day);
         final daysUntil = paymentDateOnly.difference(todayOnly).inDays;
-        daysUntilText = daysUntil >= 0
-            ? Localization.translate('$daysUntil')
-            .replaceAll('{days}', daysUntil.toString())
-            : Localization.translate('payment_overdue')
-            .replaceAll('{days}', (-daysUntil).toString());
+        final key = daysUntil >= 0
+            ? (daysUntil == 1 ? 'days_until_one' : 'days_until')
+            : (daysUntil == -1 ? 'payment_overdue_one' : 'payment_overdue');
+        daysUntilText = Localization.translate(key)
+            .replaceAll('{days}', daysUntil.abs().toString());
       } catch (e) {
         debugPrint('Error parsing payment date: $e');
         daysUntilText = Localization.translate('invalid_date');
@@ -212,51 +375,35 @@ class _SavedTaxesScreenState extends State<SavedTaxesScreen> {
       builder: (context) {
         return AlertDialog(
           title: Text(Localization.translate('tax_details')),
+          contentPadding: const EdgeInsets.all(16),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildDetailRow(
-                  context,
-                  Localization.translate('tax_name'),
-                  taxName.isNotEmpty ? taxName : Localization.translate('unknown'),
-                ),
+                    context, Localization.translate('tax_name'), taxName),
                 _buildDetailRow(
-                  context,
-                  Localization.translate('na2_code'),
-                  na2Code.isNotEmpty ? na2Code : Localization.translate('unknown'),
-                ),
+                    context, Localization.translate('na2_code'), na2Code),
+                _buildDetailRow(context, Localization.translate('YNL'), ynl),
                 _buildDetailRow(
-                  context,
-                  Localization.translate('ynl'),
-                  ynl.isNotEmpty ? ynl : Localization.translate('unknown'),
-                ),
+                    context, Localization.translate('period'), period),
                 _buildDetailRow(
-                  context,
-                  Localization.translate('period'),
-                  period.isNotEmpty ? period : Localization.translate('unknown'),
-                ),
+                    context,
+                    Localization.translate('payment_date'),
+                    paymentDate.isNotEmpty
+                        ? paymentDate
+                        : Localization.translate('unknown')),
                 _buildDetailRow(
-                  context,
-                  Localization.translate('payment_date'),
-                  paymentDate.isNotEmpty
-                      ? paymentDate
-                      : Localization.translate('unknown'),
-                ),
-                _buildDetailRow(
-                  context,
-                  Localization.translate('days_until_payment'),
-                  daysUntilText,
-                ),
+                    context,
+                    Localization.translate('days_until_payment'),
+                    daysUntilText),
               ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: Text(Localization.translate('close')),
             ),
           ],
@@ -270,9 +417,9 @@ class _SavedTaxesScreenState extends State<SavedTaxesScreen> {
     _bannerAd?.dispose();
     _interstitialAd?.dispose();
     super.dispose();
+    _isAdLoaded = false;
   }
 
-  // Helper method to build detail rows consistently
   Widget _buildDetailRow(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
@@ -299,48 +446,60 @@ class _SavedTaxesScreenState extends State<SavedTaxesScreen> {
         padding: const EdgeInsets.all(12),
         child: _isLoading
             ? Center(
-          child: CircularProgressIndicator(
-            color: Theme.of(context).primaryColor,
-          ),
-        )
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      Localization.translate('loading'),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                    ),
+                  ],
+                ),
+              )
             : _savedTaxes.isEmpty
-            ? Center(
-          child: Text(
-            Localization.translate('no_saved_taxes'),
-            style: TextStyle(
-              fontSize: 18,
-              color: Theme.of(context).textTheme.bodyMedium?.color,
-            ),
-          ),
-        )
-            : ListView.builder(
-          itemCount: _savedTaxes.length,
-          itemBuilder: (context, index) {
-            final tax = _savedTaxes[index];
-            final compositeKey =
-                '${tax['na2_code']}_${tax['payment_date']}';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: SavedTaxCard(
-                tax: tax,
-                onStarToggled: () => _toggleStarredTax(compositeKey),
-                onInfoPressed: () => _showTaxDetails(context, tax),
-              ),
-            );
-          },
-        ),
+                ? Center(
+                    child: Text(
+                      Localization.translate('no_saved_taxes'),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _savedTaxes.length,
+                    itemBuilder: (context, index) {
+                      final tax = _savedTaxes[index];
+                      final na2Code = tax['na2_code']?.toString() ?? '';
+                      final paymentDate = tax['payment_date']?.toString() ?? '';
+                      final compositeKey = paymentDate.isNotEmpty
+                          ? '${na2Code}_$paymentDate'
+                          : na2Code;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: SavedTaxCard(
+                          tax: tax,
+                          onStarToggled: () => _toggleStarredTax(compositeKey),
+                          onInfoPressed: () => _showTaxDetails(context, tax),
+                        ),
+                      );
+                    },
+                  ),
       ),
-      bottomNavigationBar: BottomAppBar(
-        child: Container(
-          child: _isAdLoaded && _bannerAd != null
-              ? SizedBox(
-            height: _bannerAd!.size.height.toDouble(),
-            width: _bannerAd!.size.width.toDouble(),
-            child: AdWidget(ad: _bannerAd!),
-          )
-              : const SizedBox.shrink(),
-        ),
-      ),
+      bottomNavigationBar: _isAdLoaded && _bannerAd != null
+          ? Container(
+              height: _bannerAd!.size.height.toDouble(),
+              width: _bannerAd!.size.width.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
@@ -351,26 +510,25 @@ class SavedTaxCard extends StatelessWidget {
   final VoidCallback onInfoPressed;
 
   const SavedTaxCard({
+    Key? key,
     required this.tax,
     required this.onStarToggled,
     required this.onInfoPressed,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final String taxName = Localization.currentLanguage == 'ru'
-        ? tax['tax_name_ru']?.toString() ?? ''
-        : tax['tax_name_uz']?.toString() ?? '';
-    final String period = Localization.currentLanguage == 'ru'
-        ? tax['period_uz']?.toString() ?? ''
-        : tax['period_uz']?.toString() ?? '';
-    final String rawNa2Code = tax['na2_code']?.toString() ?? '';
-    final String na2Code = rawNa2Code.contains('_')
-        ? rawNa2Code.split('_').first
-        : rawNa2Code;
-
-    // Debug: Log na2Code to verify
-    debugPrint('SavedTaxCard na2Code: $na2Code');
+    final taxName = Localization.currentLanguage == 'ru'
+        ? tax['tax_name_ru']?.toString() ?? Localization.translate('unknown')
+        : tax['tax_name_uz']?.toString() ?? Localization.translate('unknown');
+    final period = Localization.currentLanguage == 'ru'
+        ? tax['period_ru']?.toString() ?? Localization.translate('unknown')
+        : tax['period_uz']?.toString() ?? Localization.translate('unknown');
+    final na2Code =
+        tax['na2_code']?.toString() ?? Localization.translate('unknown');
+    final paymentDate =
+        tax['payment_date']?.toString() ?? Localization.translate('unknown');
+    final ynl = tax['YNL']?.toString() ?? Localization.translate('unknown');
 
     return Container(
       decoration: BoxDecoration(
@@ -395,7 +553,7 @@ class SavedTaxCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${Localization.translate('tax_name')}: ${taxName.isNotEmpty ? taxName : Localization.translate('unknown')}',
+                    '${Localization.translate('tax_name')}: $taxName',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -405,7 +563,7 @@ class SavedTaxCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${Localization.translate('ynl')}: ${tax['ynl']?.toString() ?? Localization.translate('unknown')}',
+                    '${Localization.translate('YNL')}: $ynl',
                     style: TextStyle(
                       fontSize: 16,
                       color: Theme.of(context).textTheme.bodyMedium?.color,
@@ -414,7 +572,7 @@ class SavedTaxCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${Localization.translate('period')}: ${period.isNotEmpty ? period : Localization.translate('unknown')}',
+                    '${Localization.translate('period')}: $period',
                     style: TextStyle(
                       fontSize: 16,
                       color: Theme.of(context).textTheme.bodyMedium?.color,
@@ -423,7 +581,7 @@ class SavedTaxCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${Localization.translate('payment_date')}: ${tax['payment_date']?.toString() ?? Localization.translate('unknown')}',
+                    '${Localization.translate('payment_date')}: $paymentDate',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -433,7 +591,7 @@ class SavedTaxCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${Localization.translate('na2_code')}: ${na2Code.isNotEmpty ? na2Code : Localization.translate('unknown')}',
+                    '${Localization.translate('na2_code')}: $na2Code',
                     style: TextStyle(
                       fontSize: 16,
                       color: Theme.of(context).textTheme.bodyMedium?.color,
