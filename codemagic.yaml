@@ -1,1 +1,50 @@
-
+# Codemagic configuration for building an iOS app
+workflows:
+  ios-build:
+    name: iOS Build Workflow
+    max_build_duration: 120 # Maximum build time in minutes
+    instance_type: mac_mini_m1 # macOS machine type for build
+    environment:
+      ios_signing:
+        distribution_type: app_store # Options: app_store, ad_hoc, development, enterprise
+        bundle_identifier: com.example.myapp # Replace with your app's bundle ID
+      xcode: latest # Use the latest Xcode version
+      cocoapods: default # Use default CocoaPods version
+      vars:
+        XCODE_SCHEME: "MyApp" # Replace with your Xcode scheme name
+        XCODE_PROJECT: "MyApp.xcodeproj" # Replace with your Xcode project or workspace file
+        XCODE_CONFIGURATION: "Release" # Build configuration (e.g., Debug, Release)
+    scripts:
+      - name: Install CocoaPods dependencies
+        script: |
+          if [ -f "Podfile" ]; then
+            pod install
+          else
+            echo "No Podfile found, skipping CocoaPods installation"
+          fi
+      - name: Build and archive iOS app
+        script: |
+          xcodebuild -project "$XCODE_PROJECT" \
+                     -scheme "$XCODE_SCHEME" \
+                     -configuration "$XCODE_CONFIGURATION" \
+                     -archivePath ./build/MyApp.xcarchive \
+                     clean archive \
+                     CODE_SIGN_STYLE=Manual \
+                     CODE_SIGN_IDENTITY="iPhone Distribution" \
+                     PROVISIONING_PROFILE_SPECIFIER="MyAppProfile" # Replace with your provisioning profile name
+      - name: Export IPA
+        script: |
+          xcodebuild -exportArchive \
+                     -archivePath ./build/MyApp.xcarchive \
+                     -exportOptionsPlist exportOptions.plist \
+                     -exportPath ./build
+    artifacts:
+      - build/*.ipa # Collect the generated IPA file
+      - build/*.xcarchive # Collect the archive for debugging if needed
+    publishing:
+      email:
+        recipients:
+          - user@example.com # Replace with your email for build notifications
+        notify:
+          success: true
+          failure: true
