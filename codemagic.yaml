@@ -1,19 +1,20 @@
-# Codemagic configuration for building an iOS app
+# Codemagic configuration for building Uztools iOS app
 workflows:
   ios-build:
-    name: iOS Build Workflow
-    max_build_duration: 120 # Maximum build time in minutes
-    instance_type: mac_mini_m1 # macOS machine type for build
+    name: Uztools iOS Build
+    max_build_duration: 120
+    instance_type: mac_mini_m1
     environment:
       ios_signing:
-        distribution_type: app_store # Options: app_store, ad_hoc, development, enterprise
-        bundle_identifier: com.hbncompany.uztools # Replace with your app's bundle ID
-      xcode: latest # Use the latest Xcode version
-      cocoapods: default # Use default CocoaPods version
+        distribution_type: app_store
+        bundle_identifier: com.hbncompany.uztools
+      xcode: latest
+      cocoapods: default
       vars:
-        XCODE_SCHEME: "MyApp" # Replace with your Xcode scheme name
-        XCODE_PROJECT: "MyApp.xcodeproj" # Replace with your Xcode project or workspace file
-        XCODE_CONFIGURATION: "Release" # Build configuration (e.g., Debug, Release)
+        XCODE_SCHEME: "Uztools" # Replace with your Xcode scheme name
+        XCODE_PROJECT: "Uztools.xcodeproj" # Replace with your Xcode project or workspace file
+        XCODE_CONFIGURATION: "Release"
+        PROVISIONING_PROFILE_NAME: "UztoolsAppStoreProfile" # Replace with your provisioning profile name
     scripts:
       - name: Install CocoaPods dependencies
         script: |
@@ -27,24 +28,24 @@ workflows:
           xcodebuild -project "$XCODE_PROJECT" \
                      -scheme "$XCODE_SCHEME" \
                      -configuration "$XCODE_CONFIGURATION" \
-                     -archivePath ./build/MyApp.xcarchive \
+                     -archivePath ./build/Uztools.xcarchive \
                      clean archive \
                      CODE_SIGN_STYLE=Manual \
                      CODE_SIGN_IDENTITY="iPhone Distribution" \
-                     PROVISIONING_PROFILE_SPECIFIER="MyAppProfile" # Replace with your provisioning profile name
+                     PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_NAME"
       - name: Export IPA
         script: |
           xcodebuild -exportArchive \
-                     -archivePath ./build/MyApp.xcarchive \
+                     -archivePath ./build/Uztools.xcarchive \
                      -exportOptionsPlist exportOptions.plist \
                      -exportPath ./build
     artifacts:
-      - build/*.ipa # Collect the generated IPA file
-      - build/*.xcarchive # Collect the archive for debugging if needed
+      - build/*.ipa
+      - build/*.xcarchive
     publishing:
       email:
         recipients:
-          - user@example.com # Replace with your email for build notifications
+          - user@example.com # Replace with your email
         notify:
           success: true
           failure: true
